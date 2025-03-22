@@ -7,9 +7,10 @@ export default function Chat() {
   const [isInfiniteMode, setIsInfiniteMode] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [pdfText, setPdfText] = useState('');
+  const [pdfInfo, setPdfInfo] = useState(null);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -46,17 +47,30 @@ export default function Chat() {
       const data = await res.json();
       
       if (data.success) {
+        // Set the PDF text and info
+        setPdfText(data.text);
+        setPdfInfo(data.info);
+        
         setUploadedFile({
-          name: file.name,
-          path: data.filePath,
-          size: (file.size / 1024 / 1024).toFixed(2) // convert to mb
+          name: data.info.fileName,
+          size: data.info.fileSize,
+          pageCount: data.info.pageCount
         });
         
-        // Add a system message about the uploaded file
-        setMessages(prev => [...prev, {
-          role: 'system',
-          text: `File uploaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`
-        }]);
+        // Add a system message about the uploaded file and extracted text
+        setMessages(prev => [
+          ...prev, 
+          {
+            role: 'system',
+            text: `File uploaded: ${data.info.fileName} (${data.info.fileSize}, ${data.info.pageCount} pages)`
+          },
+          {
+            role: 'system',
+            text: `Text extracted from PDF:\n\n${data.text}`
+          }
+        ]);
+        
+        adjustTextareaHeight();
       } else {
         alert('Failed to upload file: ' + data.error);
       }
@@ -66,7 +80,7 @@ export default function Chat() {
       setIsUploading(false);
     }
   };
-
+  
   const sendMessage = async () => {
     if (!input.trim()) return;
     const userMessage = { role: 'user', text: input };
@@ -79,7 +93,7 @@ export default function Chat() {
       body: JSON.stringify({ 
         message: userMessage.text,
         mode: isInfiniteMode ? 'infinite' : 'default',
-        filePath: uploadedFile?.path // Include file path if a file is uploaded
+        pdfText: pdfText // Send the PDF text to the chat API
       }),
     });
     const data = await res.json();
@@ -96,6 +110,8 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Rest of your component remains the same
+  
   return (
     <div className="min-h-screen bg-gray-900">
       <Head>

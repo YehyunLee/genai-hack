@@ -1,6 +1,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
+import pdfParse from 'pdf-parse';
 
 export const config = {
   api: {
@@ -14,14 +15,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), 'public/uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    // Create temp directory if it doesn't exist
+    const tempDir = path.join(process.cwd(), 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
     }
 
     const form = formidable({
-      uploadDir: uploadsDir,
+      uploadDir: tempDir,
       keepExtensions: true,
       maxFileSize: 10 * 1024 * 1024, // 10MB limit
     });
@@ -34,24 +35,37 @@ export default async function handler(req, res) {
       });
     });
 
-    console.log("Files received:", files); 
-
+    // In newer versions of formidable, the file might be in an array
     const file = files.file?.[0] || files.file;
     
     if (!file || !file.filepath) {
       return res.status(400).json({ error: 'No valid file uploaded' });
     }
 
-    // Generate relative path for client use
-    const relativePath = `/uploads/${path.basename(file.filepath)}`;
+    // Read the PDF file
+    const dataBuffer = fs.readFileSync(file.filepath);
+    
+    // Extract text from PDF
+    const pdfData = await pdfParse(dataBuffer);
+    const extractedText = pdfData.text;
+    
+    // Get additional PDF info
+    const pdfInfo = {
+      pageCount: pdfData.numpages,
+      fileName: file.originalFilename || 'uploaded-file.pdf',
+      fileSize: (file.size / 1024).toFixed(2) + ' KB'
+    };
+    
+    // Delete file after done
+    fs.unlinkSync(file.filepath);
 
     return res.status(200).json({
       success: true,
-      filePath: relativePath,
-      fileName: file.originalFilename || file.newFilename || 'uploaded-file',
+      text: extractedText,
+      info: pdfInfo
     });
   } catch (error) {
-    console.error('File upload error:', error);
+    console.error('PDF processing error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
