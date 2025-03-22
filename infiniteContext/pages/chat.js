@@ -6,6 +6,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { db } from "../firebaseConfig";
 import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 import Sidebar from './components/sidebar';
+import { onSnapshot } from "firebase/firestore";
 
 
 import ReactMarkdown from 'react-markdown';
@@ -384,6 +385,34 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    // chatId
+    if (chatId) {
+      const unsubscribe = onSnapshot(doc(db, `users/${user.uid}/chats/${chatId}`), (doc) => {
+        const chatData = doc.data();
+        if (chatData) {
+          setMessages(chatData.messages || []);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [chatId, user]);
+  // useEffect(() => {
+  //   if (fullText) {
+  //     const newMessage = {
+  //       role: 'user',
+  //       text: fullText.content,
+
+  //       sourceOrder: [`${fullText.source}-${fullText.id}`]
+  //     };
+  //     setMessages(prev => [...prev, newMessage]);
+  //     setFullText(null);
+  //     setActiveSource(null);
+  //     setSourceOrder(prev => prev.filter(sourceId => sourceId !== `${fullText.source}-${fullText.id}`));
+  //   }
+  // }, [fullText]);
+
+
   const switchSource = (source) => {
     if (source === 'clipboard' && clipboardText) {
       setActiveSource('clipboard');
@@ -530,7 +559,13 @@ export default function Chat() {
 
       <div className="flex h-screen">
         {/* Sidebar */}
-        <Sidebar onNewChat={() => setMessages([])} />
+        <Sidebar userId={user?.uid}
+        onNewChat={() => {
+          setMessages([]);
+          setChatId(null);
+        }}
+        chatId={chatId}
+        setChatId={setChatId} />
 
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">

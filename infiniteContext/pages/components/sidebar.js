@@ -33,7 +33,13 @@ const Sidebar = ({ userId, onNewChat, chatId, setChatId }) => {
       </button>
       <div className="flex-1 overflow-y-auto">
         {chats.map(chat => (
-          <div key={chat.id} className="p-2 text-white border-b border-gray-700">
+          <div
+            key={chat.id}
+            onClick={() => setChatId(chat.id)}
+            className={`p-2 text-white border-b border-gray-700 cursor-pointer ${
+              chat.id === chatId ? 'bg-gray-700' : ''
+            }`}
+          >
             {chat.title || 'Untitled Chat'}
           </div>
         ))}
