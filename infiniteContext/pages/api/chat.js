@@ -13,7 +13,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
 
 // Working on hackathaton MVP project for infinite context window. We will support almost infinite context window by dividing up the text into chunk of texts and process individiaully calling LLM API and merge everything later. Ex) 10m tokens of input -> divide into 10 of 1m tokens -> call LLM parallel -> merge.
 
@@ -50,7 +50,7 @@ const cohereResponse = async (message) => {
 }
 
 // Process text by token count (rough estimate)
-const processLongText = async (text, userRequest, chunkSize = 1000) => {
+const processLongText = async (text, userRequest, chunkSize = 500) => {
   // Rough estimate of tokens (words * 1.3)
   const words = text.split(/\s+/);
   const chunks = [];
@@ -77,16 +77,47 @@ const processLongText = async (text, userRequest, chunkSize = 1000) => {
   return chunks;
 };
 
-// Process chunks in parallel
+// Process chunks sequentially instead of parallel to handle rate limits
 const processChunks = async (chunks) => {
-  const responses = await Promise.all(
-    chunks.map(chunk => modelResponse('gemini', chunk.prompt))
-  );
-  
-  return responses.map((response, index) => ({
-    ...chunks[index],
-    response
-  }));
+  const results = [];
+  let hitRateLimit = false;
+
+  for (const chunk of chunks) {
+    try {
+      const response = await modelResponse('gemini', chunk.prompt);
+      results.push({
+        ...chunk,
+        response,
+        error: null
+      });
+      
+      // Add delay between requests to help avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+    } catch (error) {
+      console.error(`Error processing chunk ${chunk.chunkNumber}:`, error);
+      
+      // Check if rate limit error
+      if (error.message.toLowerCase().includes('429') || 
+          error.message.toLowerCase().includes('too many requests')) {
+        hitRateLimit = true;
+        break; // Stop processing remaining chunks
+      }
+      
+      results.push({
+        ...chunk,
+        response: null,
+        error: error.message
+      });
+    }
+  }
+
+  return {
+    results,
+    hitRateLimit,
+    processedCount: results.length,
+    totalCount: chunks.length
+  };
 };
 
 export default async function handler(req, res) {
@@ -104,17 +135,24 @@ export default async function handler(req, res) {
     if (mode === 'infinite' && fullText) {
       // Process in chunks for infinite context
       const chunks = await processLongText(fullText, message);
-      const processedChunks = await processChunks(chunks);
+      const { results: processedChunks, hitRateLimit, processedCount, totalCount } = await processChunks(chunks);
       
-      // Combine responses
-      const combinedResponse = processedChunks
-        .map(chunk => `[Part ${chunk.chunkNumber}/${chunk.totalChunks}]\n${chunk.response}`)
-        .join('\n\n');
-      
+      // Filter successful responses and combine them
+      const successfulResponses = processedChunks
+        .filter(chunk => chunk.response)
+        .map(chunk => `[Part ${chunk.chunkNumber}/${totalCount}]\n${chunk.response}`);
+    
+      const statusMessage = hitRateLimit 
+        ? `\n\n[Note: Rate limit reached. Processed ${processedCount} out of ${totalCount} chunks. Please wait a moment before requesting more.]`
+        : '';
+
       return res.status(200).json({
-        response: combinedResponse,
+        response: successfulResponses.join('\n\n') + statusMessage,
         chunks: processedChunks,
-        mode: 'infinite'
+        mode: 'infinite',
+        partial: hitRateLimit,
+        processedCount,
+        totalCount
       });
     } else {
       // Regular chat mode
