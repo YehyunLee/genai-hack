@@ -49,21 +49,44 @@ const cohereResponse = async (message) => {
     return response;
 }
 
-// Process text by word count
-const processLongText = (text, chunk_size=50) => {
-    // Split text into words and group them into chunks
-    const words = text.split(/\s+/);
-    const chunks = [];
+// Process text by token count (rough estimate)
+const processLongText = async (text, userRequest, chunkSize = 1000) => {
+  // Rough estimate of tokens (words * 1.3)
+  const words = text.split(/\s+/);
+  const chunks = [];
+  const totalChunks = Math.ceil(words.length / chunkSize);
+  
+  for (let i = 0; i < words.length; i += chunkSize) {
+    const chunkText = words.slice(i, i + chunkSize).join(' ');
+    const chunkNumber = Math.floor(i / chunkSize) + 1;
     
-    for (let i = 0; i < words.length; i += chunk_size) {
-        const chunk = words.slice(i, i + chunk_size).join(' ');
-        chunks.push({
-            chunk,
-            summary: `${chunk} (word count: ${words.slice(i, i + chunk_size).length})`
-        });
-    }
+    const prompt = systemPromptForEachChunk
+      .replace('{{chunk_number}}', chunkNumber)
+      .replace('{{total_chunks}}', totalChunks)
+      .replace('{{user_request}}', userRequest)
+      .replace('{{chunk_text}}', chunkText);
     
-    return chunks;
+    chunks.push({
+      prompt,
+      chunkText,
+      chunkNumber,
+      totalChunks
+    });
+  }
+  
+  return chunks;
+};
+
+// Process chunks in parallel
+const processChunks = async (chunks) => {
+  const responses = await Promise.all(
+    chunks.map(chunk => modelResponse('gemini', chunk.prompt))
+  );
+  
+  return responses.map((response, index) => ({
+    ...chunks[index],
+    response
+  }));
 };
 
 export default async function handler(req, res) {
@@ -72,40 +95,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, mode } = req.body;
+    const { message, mode, fullText } = req.body;
     
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    if (Buffer.byteLength(JSON.stringify(req.body)) > 10 * 1024 * 1024) { // 10MB check
-      return res.status(413).json({ error: 'Request entity too large' });
-    }
-
-    if (mode === 'infinite') {
-      // Handle infinite context mode
-      const chunks = processLongText(message);
-      const combinedResponse = chunks.map(c => c.summary).join('\n');
+    if (mode === 'infinite' && fullText) {
+      // Process in chunks for infinite context
+      const chunks = await processLongText(fullText, message);
+      const processedChunks = await processChunks(chunks);
+      
+      // Combine responses
+      const combinedResponse = processedChunks
+        .map(chunk => `[Part ${chunk.chunkNumber}/${chunk.totalChunks}]\n${chunk.response}`)
+        .join('\n\n');
       
       return res.status(200).json({
-        response: `Infinite Context Processing Results:\n${combinedResponse}`,
-        chunks: chunks,
+        response: combinedResponse,
+        chunks: processedChunks,
         mode: 'infinite'
       });
     } else {
-      try {
-        const response = await modelResponse('gemini', message);
-        return res.status(200).json({
-          response: response,
-          mode: 'default'
-        });
-      } catch (error) {
-        console.error('Model Error:', error);
-        return res.status(500).json({ 
-          error: 'Model processing error',
-          details: error.message 
-        });
-      }
+      // Regular chat mode
+      const response = await modelResponse('gemini', message);
+      return res.status(200).json({
+        response,
+        mode: 'default'
+      });
     }
   } catch (error) {
     console.error('API Error:', error);
