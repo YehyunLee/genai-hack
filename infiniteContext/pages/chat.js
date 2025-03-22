@@ -227,11 +227,14 @@ export default function Chat() {
       setMessages(prev => [...prev, userMessage]);
       setInput('');
       
-      // Initialize empty AI message
+      // Check if we're in infinite context mode
+      const isInfiniteMode = sourceOrder.length > 0;
+      
+      // Initialize AI message based on mode
       const initialAiMessage = {
         role: 'ai',
-        text: 'Processing chunks...',
-        mode: 'infinite',
+        text: isInfiniteMode ? 'Processing chunks...' : '',
+        mode: isInfiniteMode ? 'infinite' : 'default',
         chunks: {}
       };
       setMessages(prev => [...prev, initialAiMessage]);
@@ -243,7 +246,7 @@ export default function Chat() {
 
       const payload = {
         message: userMessage.text,
-        mode: sourceOrder.length > 0 ? 'infinite' : 'default',
+        mode: isInfiniteMode ? 'infinite' : 'default',
         fullText: combinedText || null,
       };
 
@@ -253,6 +256,21 @@ export default function Chat() {
         body: JSON.stringify(payload),
       });
       
+      if (!isInfiniteMode) {
+        // Handle normal mode response
+        const data = await res.json();
+        setMessages(prev => [
+          ...prev.slice(0, -1),
+          {
+            role: 'ai',
+            text: data.response,
+            mode: 'default'
+          }
+        ]);
+        return;
+      }
+
+      // Handle infinite mode response with streaming
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
