@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb' // Increase this value based on your needs
+      sizeLimit: '50mb' // Increase this value based on your needs
     },
     responseLimit: false
   }
