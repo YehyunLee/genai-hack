@@ -43,6 +43,12 @@ const CodeBlock = ({ children, className }) => {
   );
 };
 
+const LoadingMessage = () => (
+  <div className="inline-block animate-pulse bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700 rounded px-2 py-1">
+    Processing chunks...
+  </div>
+);
+
 export default function Chat() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -528,18 +534,22 @@ export default function Chat() {
                   <div className="flex-1">
                     {msg.sourceOrder && <MessageAttachmentIndicator sourceOrder={msg.sourceOrder} />}
                     <div className="prose prose-invert max-w-none">
-                      <ReactMarkdown
-                        components={{
-                          code: ({ node, inline, className, children, ...props }) => {
-                            if (inline) {
-                              return <code className="bg-gray-700 rounded px-1 py-0.5" {...props}>{children}</code>;
+                      {msg.text === 'Processing chunks...' ? (
+                        <LoadingMessage />
+                      ) : (
+                        <ReactMarkdown
+                          components={{
+                            code: ({ node, inline, className, children, ...props }) => {
+                              if (inline) {
+                                return <code className="bg-gray-700 rounded px-1 py-0.5" {...props}>{children}</code>;
+                              }
+                              return <CodeBlock className={className}>{children}</CodeBlock>;
                             }
-                            return <CodeBlock className={className}>{children}</CodeBlock>;
-                          }
-                        }}
-                      >
-                        {msg.text}
-                      </ReactMarkdown>
+                          }}
+                        >
+                          {msg.text}
+                        </ReactMarkdown>
+                      )}
                     </div>
                   </div>
                 </div>
