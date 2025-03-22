@@ -3,6 +3,12 @@ import Head from 'next/head';
 import { logout } from "./auth/auth";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import { db } from "../firebaseConfig";
+import { collection, addDoc, doc, setDoc } from "firebase/firestore";
+import Sidebar from './components/sidebar';
+import { onSnapshot } from "firebase/firestore";
+
+
 import ReactMarkdown from 'react-markdown';
 
 const CodeBlock = ({ children, className }) => {
@@ -43,9 +49,9 @@ const CodeBlock = ({ children, className }) => {
   );
 };
 
-const LoadingMessage = () => (
+const LoadingMessage = ({ infiniteMode }) => (
   <div className="inline-block animate-pulse bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700 rounded px-2 py-1">
-    Processing chunks...
+    {infiniteMode ? 'Processing with infinite context...' : 'Processing with limited context...'}
   </div>
 );
 
@@ -69,6 +75,7 @@ export default function Chat() {
   const [processingChunks, setProcessingChunks] = useState({});
   const [visibleMessages, setVisibleMessages] = useState({});
   const [user, setUser] = useState(null);
+  const [infiniteMode, setInfiniteMode] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -280,9 +287,10 @@ export default function Chat() {
       // Initialize AI message based on mode
       const initialAiMessage = {
         role: 'ai',
-        text: isInfiniteMode ? 'Processing chunks...' : '',
-        mode: isInfiniteMode ? 'infinite' : 'default',
-        chunks: {}
+        text: sourceOrder.length > 0 ? (infiniteMode ? 'Processing with infinite context...' : 'Processing with limited context...') : '',
+        mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
+        chunks: {},
+        infiniteMode
       };
       setMessages(prev => [...prev, initialAiMessage]);
       
@@ -292,10 +300,23 @@ export default function Chat() {
       }).join('\n\n');
 
       const payload = {
-        message: userMessage.text,
-        mode: isInfiniteMode ? 'infinite' : 'default',
+        message: infiniteMode ? userMessage.text : `${userMessage.text}\n\nContext:\n${combinedText}`,
+        mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
         fullText: combinedText || null,
       };
+
+      let tempChatId = chatId;
+
+      // Create a new chat document if it doesn't exist
+      if (!chatId) {
+        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
+          title: userMessage.text,
+          createdAt: new Date(),
+          messages: []
+        });
+        setChatId(chatDocRef.id);
+        tempChatId = chatDocRef.id;
+      }
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -303,7 +324,7 @@ export default function Chat() {
         body: JSON.stringify(payload),
       });
       
-      if (!isInfiniteMode) {
+      if (!infiniteMode || sourceOrder.length === 0) {
         // Handle normal mode response
         const data = await res.json();
         setMessages(prev => [
@@ -360,6 +381,34 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    // chatId
+    if (chatId) {
+      const unsubscribe = onSnapshot(doc(db, `users/${user.uid}/chats/${chatId}`), (doc) => {
+        const chatData = doc.data();
+        if (chatData) {
+          setMessages(chatData.messages || []);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [chatId, user]);
+  // useEffect(() => {
+  //   if (fullText) {
+  //     const newMessage = {
+  //       role: 'user',
+  //       text: fullText.content,
+
+  //       sourceOrder: [`${fullText.source}-${fullText.id}`]
+  //     };
+  //     setMessages(prev => [...prev, newMessage]);
+  //     setFullText(null);
+  //     setActiveSource(null);
+  //     setSourceOrder(prev => prev.filter(sourceId => sourceId !== `${fullText.source}-${fullText.id}`));
+  //   }
+  // }, [fullText]);
+
+
   const switchSource = (source) => {
     if (source === 'clipboard' && clipboardText) {
       setActiveSource('clipboard');
@@ -382,13 +431,18 @@ export default function Chat() {
   const FullTextIndicator = () => sourceOrder.length > 0 && (
     <div className="flex flex-col gap-1 px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-600">
       <div className="flex gap-2 items-center flex-wrap">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-green-600 text-white">
+        <button 
+          onClick={() => setInfiniteMode(prev => !prev)}
+          className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
+            infiniteMode ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'
+          }`}
+        >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
-          <span>Infinite Context Enabled</span>
-          <div className="w-2 h-2 rounded-full bg-white" />
-        </div>
+          <span>Infinite Context {infiniteMode ? 'Enabled' : 'Disabled'}</span>
+          <div className={`w-2 h-2 rounded-full ${infiniteMode ? 'bg-white' : 'bg-gray-400'}`} />
+        </button>
         <div className="flex items-center flex-wrap gap-1">
           {sourceOrder.map((sourceId, index) => {
             const [type, id] = sourceId.split('-');
@@ -506,14 +560,13 @@ export default function Chat() {
 
       <div className="flex h-screen">
         {/* Sidebar */}
-        <div className="hidden md:flex w-64 bg-gray-800 flex-col p-4">
-          <button className="flex items-center justify-center gap-2 px-4 py-2 mb-4 w-full rounded border border-white/20 text-white hover:bg-gray-700 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Chat
-          </button>
-        </div>
+        <Sidebar userId={user?.uid}
+        onNewChat={() => {
+          setMessages([]);
+          setChatId(null);
+        }}
+        chatId={chatId}
+        setChatId={setChatId} />
 
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">
@@ -534,8 +587,8 @@ export default function Chat() {
                   <div className="flex-1">
                     {msg.sourceOrder && <MessageAttachmentIndicator sourceOrder={msg.sourceOrder} />}
                     <div className="prose prose-invert max-w-none">
-                      {msg.text === 'Processing chunks...' ? (
-                        <LoadingMessage />
+                      {msg.text.startsWith('Processing') ? (
+                        <LoadingMessage infiniteMode={msg.infiniteMode} />
                       ) : (
                         <ReactMarkdown
                           components={{
