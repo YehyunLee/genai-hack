@@ -1,10 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { EventEmitter } from 'events';
 
 export const config = {
   api: {
     bodyParser: {
       sizeLimit: '10mb' // Increase this value based on your needs
-    }
+    },
+    responseLimit: false
   }
 };
 
@@ -13,7 +15,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
 
 // Working on hackathaton MVP project for infinite context window. We will support almost infinite context window by dividing up the text into chunk of texts and process individiaully calling LLM API and merge everything later. Ex) 10m tokens of input -> divide into 10 of 1m tokens -> call LLM parallel -> merge.
 
@@ -49,21 +51,108 @@ const cohereResponse = async (message) => {
     return response;
 }
 
-// Process text by word count
-const processLongText = (text, chunk_size=50) => {
-    // Split text into words and group them into chunks
-    const words = text.split(/\s+/);
-    const chunks = [];
+// Process text by token count (rough estimate)
+const processLongText = async (text, userRequest, chunkSize = 500) => {
+  // Rough estimate of tokens (words * 1.3)
+  const words = text.split(/\s+/);
+  const chunks = [];
+  const totalChunks = Math.ceil(words.length / chunkSize);
+  
+  for (let i = 0; i < words.length; i += chunkSize) {
+    const chunkText = words.slice(i, i + chunkSize).join(' ');
+    const chunkNumber = Math.floor(i / chunkSize) + 1;
     
-    for (let i = 0; i < words.length; i += chunk_size) {
-        const chunk = words.slice(i, i + chunk_size).join(' ');
-        chunks.push({
-            chunk,
-            summary: `${chunk} (word count: ${words.slice(i, i + chunk_size).length})`
-        });
+    const prompt = systemPromptForEachChunk
+      .replace('{{chunk_number}}', chunkNumber)
+      .replace('{{total_chunks}}', totalChunks)
+      .replace('{{user_request}}', userRequest)
+      .replace('{{chunk_text}}', chunkText);
+    
+    chunks.push({
+      prompt,
+      chunkText,
+      chunkNumber,
+      totalChunks
+    });
+  }
+  
+  return chunks;
+};
+
+// Modify processChunks to use streaming response
+const processChunks = async (chunks, res) => {
+  const encoder = new TextEncoder();
+  const completedChunks = {};
+  let errorCount = 0;
+
+  // Process all chunks in parallel
+  const chunkPromises = chunks.map(async chunk => {
+    try {
+      const response = await modelResponse('gemini', chunk.prompt);
+      const chunkResult = {
+        ...chunk,
+        response,
+        error: null,
+        status: 'complete'
+      };
+
+      // Stream result immediately
+      const data = encoder.encode(JSON.stringify({
+        type: 'chunk',
+        data: chunkResult
+      }) + '\n');
+      
+      res.write(data);
+      await res.flush();
+      
+      return chunkResult;
+    } catch (error) {
+      errorCount++;
+      console.error(`Error processing chunk ${chunk.chunkNumber}:`, error);
+      
+      // Only throw if it's a rate limit error
+      if (error.message.toLowerCase().includes('429') || 
+          error.message.toLowerCase().includes('too many requests')) {
+        throw error;
+      }
+      
+      return {
+        ...chunk,
+        response: `Error processing chunk ${chunk.chunkNumber}: ${error.message}`,
+        error: error.message,
+        status: 'error'
+      };
     }
+  });
+
+  try {
+    const results = await Promise.allSettled(chunkPromises);
     
-    return chunks;
+    // Send final status
+    res.write(encoder.encode(JSON.stringify({
+      type: 'complete',
+      data: {
+        totalProcessed: results.length,
+        errorCount
+      }
+    }) + '\n'));
+    
+    return {
+      results: results.map(r => r.status === 'fulfilled' ? r.value : r.reason),
+      errorCount,
+      totalCount: chunks.length
+    };
+  } catch (error) {
+    // If we hit rate limits, return what we have so far
+    res.write(encoder.encode(JSON.stringify({
+      type: 'error',
+      data: {
+        message: 'Rate limit reached',
+        error: error.message
+      }
+    }) + '\n'));
+    throw error;
+  }
 };
 
 export default async function handler(req, res) {
@@ -72,40 +161,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, mode } = req.body;
+    const { message, mode, fullText } = req.body;
     
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    if (Buffer.byteLength(JSON.stringify(req.body)) > 10 * 1024 * 1024) { // 10MB check
-      return res.status(413).json({ error: 'Request entity too large' });
-    }
-
-    if (mode === 'infinite') {
-      // Handle infinite context mode
-      const chunks = processLongText(message);
-      const combinedResponse = chunks.map(c => c.summary).join('\n');
-      
-      return res.status(200).json({
-        response: `Infinite Context Processing Results:\n${combinedResponse}`,
-        chunks: chunks,
-        mode: 'infinite'
+    if (mode === 'infinite' && fullText) {
+      // Set up streaming response
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Transfer-Encoding': 'chunked',
       });
+      
+      const chunks = await processLongText(fullText, message);
+      await processChunks(chunks, res);
+      
+      res.end();
     } else {
-      try {
-        const response = await modelResponse('gemini', message);
-        return res.status(200).json({
-          response: response,
-          mode: 'default'
-        });
-      } catch (error) {
-        console.error('Model Error:', error);
-        return res.status(500).json({ 
-          error: 'Model processing error',
-          details: error.message 
-        });
-      }
+      // Regular chat mode
+      const response = await modelResponse('gemini', message);
+      return res.status(200).json({
+        response,
+        mode: 'default'
+      });
     }
   } catch (error) {
     console.error('API Error:', error);
