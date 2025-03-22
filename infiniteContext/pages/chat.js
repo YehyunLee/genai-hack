@@ -617,7 +617,7 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
   return (
     <div className="min-h-screen bg-gray-900">
       <Head>
-        <title>Infinite Context Chatbot</title>
+        <title>Infinite Context</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -639,31 +639,32 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
 
           {/* Header (Chat Title and the logout button) */}
           <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
-            <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">
-              {user ? chatTitle : "Infinite Context Chatbot"}
-            </h1>
-            <div className="ml-auto">
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex flex-col items-center">
+              <h1 className="text-lg md:text-xl text-white text-center truncate max-w-[200px] md:max-w-[400px]">
+                {user ? chatTitle : "Infinite Context"}
+              </h1>
+            </div>
+            <div className="ml-auto z-10">
               {user ? (
                 <button
                   onClick={() => {
                     logout();
                     window.location.href = '/auth/login';
                   }}
-                  className="text-red-300 hover:text-red-400 px-4 py-2 rounded"
+                  className="text-red-300 hover:text-red-400 px-2 md:px-4 py-2 rounded"
                 >
-                  <LogOut className="h-6 w-6" />
+                  <LogOut className="h-5 w-5 md:h-6 md:w-6" />
                 </button>
               ) : (
                 <button
                   onClick={() => window.location.href = '/auth/login'}
-                  className="text-blue-300 hover:text-blue-400 px-4 py-2 rounded text-sm"
+                  className="text-blue-300 hover:text-blue-400 px-3 py-1.5 md:px-4 md:py-2 rounded text-xs md:text-sm border border-blue-300 hover:border-blue-400"
                 >
-                  Login to Save Chats
+                  Login to Save
                 </button>
               )}
             </div>
           </div>
-
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto">
