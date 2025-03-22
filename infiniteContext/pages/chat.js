@@ -18,6 +18,7 @@ export default function Chat() {
   const dragOverItem = useRef(null);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const [processingChunks, setProcessingChunks] = useState({});
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -149,6 +150,42 @@ export default function Chat() {
     dragOverItem.current = null;
   };
 
+  const updateChunkResponse = (newChunk) => {
+    setMessages(prev => {
+      const lastMessage = prev[prev.length - 1];
+      if (lastMessage?.role === 'ai' && lastMessage.mode === 'infinite') {
+        // Store new chunk while maintaining order
+        const updatedChunks = {
+          ...lastMessage.chunks,
+          [newChunk.chunkNumber]: newChunk
+        };
+
+        // Create ordered response text from available chunks
+        const orderedResponses = Object.values(updatedChunks)
+          .sort((a, b) => a.chunkNumber - b.chunkNumber)
+          .map(chunk => {
+            if (chunk.error) {
+              return `[Part ${chunk.chunkNumber}/${chunk.totalChunks}] Error: ${chunk.error}`;
+            }
+            return `[Part ${chunk.chunkNumber}/${chunk.totalChunks}]\n${chunk.response}`;
+          })
+          .join('\n\n');
+
+        // Update message with latest chunks
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...lastMessage,
+            text: orderedResponses,
+            chunks: updatedChunks,
+            status: 'streaming'
+          }
+        ];
+      }
+      return prev;
+    });
+  };
+
   const sendMessage = async () => {
     if (!input.trim()) return;
     setError(null);
@@ -162,6 +199,15 @@ export default function Chat() {
 
       setMessages(prev => [...prev, userMessage]);
       setInput('');
+      
+      // Initialize empty AI message
+      const initialAiMessage = {
+        role: 'ai',
+        text: 'Processing chunks...',
+        mode: 'infinite',
+        chunks: {}
+      };
+      setMessages(prev => [...prev, initialAiMessage]);
       
       const combinedText = sourceOrder.map(sourceId => {
         const [type, id] = sourceId.split('-');
@@ -180,19 +226,37 @@ export default function Chat() {
         body: JSON.stringify(payload),
       });
       
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || `Error: ${res.status}`);
-      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      const aiMessage = { 
-        role: 'ai', 
-        text: data.response,
-        mode: data.mode,
-        chunks: data.chunks 
-      };
-      setMessages(prev => [...prev, aiMessage]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          try {
+            const chunk = JSON.parse(line);
+            switch (chunk.type) {
+              case 'chunk':
+                updateChunkResponse(chunk.data);
+                break;
+              case 'complete':
+                // Update final status if needed
+                break;
+              case 'error':
+                setError(chunk.data.message);
+                break;
+            }
+          } catch (e) {
+            console.error('Error parsing chunk:', e);
+          }
+        }
+      }
     } catch (err) {
       setError(err.message);
       console.error('Error:', err);

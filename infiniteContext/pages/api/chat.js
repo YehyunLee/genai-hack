@@ -1,10 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { EventEmitter } from 'events';
 
 export const config = {
   api: {
     bodyParser: {
       sizeLimit: '10mb' // Increase this value based on your needs
-    }
+    },
+    responseLimit: false
   }
 };
 
@@ -77,47 +79,80 @@ const processLongText = async (text, userRequest, chunkSize = 500) => {
   return chunks;
 };
 
-// Process chunks sequentially instead of parallel to handle rate limits
-const processChunks = async (chunks) => {
-  const results = [];
-  let hitRateLimit = false;
+// Modify processChunks to use streaming response
+const processChunks = async (chunks, res) => {
+  const encoder = new TextEncoder();
+  const completedChunks = {};
+  let errorCount = 0;
 
-  for (const chunk of chunks) {
+  // Process all chunks in parallel
+  const chunkPromises = chunks.map(async chunk => {
     try {
       const response = await modelResponse('gemini', chunk.prompt);
-      results.push({
+      const chunkResult = {
         ...chunk,
         response,
-        error: null
-      });
+        error: null,
+        status: 'complete'
+      };
+
+      // Stream result immediately
+      const data = encoder.encode(JSON.stringify({
+        type: 'chunk',
+        data: chunkResult
+      }) + '\n');
       
-      // Add delay between requests to help avoid rate limits
-      await new Promise(resolve => setTimeout(resolve, 100));
+      res.write(data);
+      await res.flush();
       
+      return chunkResult;
     } catch (error) {
+      errorCount++;
       console.error(`Error processing chunk ${chunk.chunkNumber}:`, error);
       
-      // Check if rate limit error
+      // Only throw if it's a rate limit error
       if (error.message.toLowerCase().includes('429') || 
           error.message.toLowerCase().includes('too many requests')) {
-        hitRateLimit = true;
-        break; // Stop processing remaining chunks
+        throw error;
       }
       
-      results.push({
+      return {
         ...chunk,
-        response: null,
-        error: error.message
-      });
+        response: `Error processing chunk ${chunk.chunkNumber}: ${error.message}`,
+        error: error.message,
+        status: 'error'
+      };
     }
-  }
+  });
 
-  return {
-    results,
-    hitRateLimit,
-    processedCount: results.length,
-    totalCount: chunks.length
-  };
+  try {
+    const results = await Promise.allSettled(chunkPromises);
+    
+    // Send final status
+    res.write(encoder.encode(JSON.stringify({
+      type: 'complete',
+      data: {
+        totalProcessed: results.length,
+        errorCount
+      }
+    }) + '\n'));
+    
+    return {
+      results: results.map(r => r.status === 'fulfilled' ? r.value : r.reason),
+      errorCount,
+      totalCount: chunks.length
+    };
+  } catch (error) {
+    // If we hit rate limits, return what we have so far
+    res.write(encoder.encode(JSON.stringify({
+      type: 'error',
+      data: {
+        message: 'Rate limit reached',
+        error: error.message
+      }
+    }) + '\n'));
+    throw error;
+  }
 };
 
 export default async function handler(req, res) {
@@ -128,32 +163,17 @@ export default async function handler(req, res) {
   try {
     const { message, mode, fullText } = req.body;
     
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
     if (mode === 'infinite' && fullText) {
-      // Process in chunks for infinite context
-      const chunks = await processLongText(fullText, message);
-      const { results: processedChunks, hitRateLimit, processedCount, totalCount } = await processChunks(chunks);
-      
-      // Filter successful responses and combine them
-      const successfulResponses = processedChunks
-        .filter(chunk => chunk.response)
-        .map(chunk => `[Part ${chunk.chunkNumber}/${totalCount}]\n${chunk.response}`);
-    
-      const statusMessage = hitRateLimit 
-        ? `\n\n[Note: Rate limit reached. Processed ${processedCount} out of ${totalCount} chunks. Please wait a moment before requesting more.]`
-        : '';
-
-      return res.status(200).json({
-        response: successfulResponses.join('\n\n') + statusMessage,
-        chunks: processedChunks,
-        mode: 'infinite',
-        partial: hitRateLimit,
-        processedCount,
-        totalCount
+      // Set up streaming response
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Transfer-Encoding': 'chunked',
       });
+      
+      const chunks = await processLongText(fullText, message);
+      await processChunks(chunks, res);
+      
+      res.end();
     } else {
       // Regular chat mode
       const response = await modelResponse('gemini', message);
