@@ -6,9 +6,11 @@
     "start": "next start"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.0.15",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "tailwindcss": "^4.0.15"
   },
   "engines": {
     "node": ">=18"
