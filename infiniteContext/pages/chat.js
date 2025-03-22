@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
+import { logout } from "./auth/auth";
+import { auth } from "./auth/firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function Chat() {
   const [input, setInput] = useState('');
@@ -7,6 +10,20 @@ export default function Chat() {
   const [isInfiniteMode, setIsInfiniteMode] = useState(false);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!currentUser) {
+        window.location.href = '/auth/login'; // Redirect to login page
+      } else {
+        setUser(currentUser);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -92,74 +109,103 @@ export default function Chat() {
           </div> */}
         </div>
 
-        {/* Main chat area */}
+        
         <div className="flex-1 flex flex-col">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`p-8 ${msg.role === 'ai' ? 'bg-gray-800' : 'bg-gray-900'}`}>
-                <div className="max-w-3xl mx-auto flex space-x-4">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    msg.role === 'ai' ? 'bg-green-500' : 'bg-blue-500'
-                  }`}>
-                    {msg.role === 'ai' ? 'AI' : 'U'}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-gray-100 whitespace-pre-wrap">{msg.text}</p>
+          {/* Header */}
+          <header className="p-4 flex items-center justify-between">
+            <h1 className="text-white text-lg justify-center">Header</h1>
+            {/* Add a login / logout button */}
+            {user ? (
+              <div className="flex items-center gap-2">
+                <span className="text-white">{user.email}</span>
+                <button className="text-white hover:bg-gray-700 rounded px-4 py-2 transition-colors"
+                  onClick={() => {
+                    logout();
+                    setUser(null);
+                  }}>
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button className="text-white hover:bg-gray-700 rounded px-4 py-2 transition-colors"
+                onClick={() => {
+                  window.href = '/auth/login'; // Redirect to login page
+                  // Redirect to login page or perform logout logic
+                }
+              }>
+                Login
+              </button>
+            )}
+          </header>
+          {/* Main chat area */}
+          <div className="flex-1 flex flex-col">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto">
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`p-8 ${msg.role === 'ai' ? 'bg-gray-800' : 'bg-gray-900'}`}>
+                  <div className="max-w-3xl mx-auto flex space-x-4">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      msg.role === 'ai' ? 'bg-green-500' : 'bg-blue-500'
+                    }`}>
+                      {msg.role === 'ai' ? 'AI' : 'U'}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-gray-100 whitespace-pre-wrap">{msg.text}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
 
-          {/* Input area */}
-          <div className="border-t border-gray-800 p-4">
-            <div className="max-w-3xl mx-auto">
-              <div className="relative bg-gray-700 rounded-lg">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    adjustTextareaHeight();
-                  }}
-                  onKeyDown={handleKeyDown}
-                  rows={1}
-                  className="w-full bg-transparent text-white rounded-t-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border-b border-gray-600"
-                  placeholder="Send a message..."
-                  style={{ maxHeight: '200px' }}
-                />
-                <button
-                  onClick={sendMessage}
-                  className="absolute right-2 top-2 p-1 rounded-lg bg-blue-500 hover:bg-blue-600 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
-                <div className="flex items-center px-4 py-2">
+            {/* Input area */}
+            <div className="border-t border-gray-800 p-4">
+              <div className="max-w-3xl mx-auto">
+                <div className="relative bg-gray-700 rounded-lg">
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      adjustTextareaHeight();
+                    }}
+                    onKeyDown={handleKeyDown}
+                    rows={1}
+                    className="w-full bg-transparent text-white rounded-t-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border-b border-gray-600"
+                    placeholder="Send a message..."
+                    style={{ maxHeight: '200px' }}
+                  />
                   <button
-                    onClick={() => setIsInfiniteMode(!isInfiniteMode)}
-                    className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
-                      isInfiniteMode 
-                        ? 'bg-green-600 hover:bg-green-700' 
-                        : 'bg-gray-600 hover:bg-gray-500'
-                    } text-white transition-colors`}
+                    onClick={sendMessage}
+                    className="absolute right-2 top-2 p-1 rounded-lg bg-blue-500 hover:bg-blue-600 transition-colors"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                     </svg>
-                    {isInfiniteMode ? 'Infinite Context Enabled' : 'Enable Infinite Context'}
                   </button>
-                  <span className="text-xs text-gray-400 ml-3">
-                    Press Enter to send, Shift + Enter for new line
-                  </span>
+                  <div className="flex items-center px-4 py-2">
+                    <button
+                      onClick={() => setIsInfiniteMode(!isInfiniteMode)}
+                      className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+                        isInfiniteMode 
+                          ? 'bg-green-600 hover:bg-green-700' 
+                          : 'bg-gray-600 hover:bg-gray-500'
+                      } text-white transition-colors`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      {isInfiniteMode ? 'Infinite Context Enabled' : 'Enable Infinite Context'}
+                    </button>
+                    <span className="text-xs text-gray-400 ml-3">
+                      Press Enter to send, Shift + Enter for new line
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
+            
           </div>
-          
         </div>
       </div>
     </div>
