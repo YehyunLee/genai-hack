@@ -28,7 +28,7 @@ const CodeBlock = ({ children, className }) => {
       <pre className={`${className} bg-gray-900 rounded-lg p-4 whitespace-pre-wrap break-all`}>
         <button
           onClick={copyToClipboard}
-          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity 
+          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity
                    bg-gray-800 hover:bg-gray-700 p-2 rounded border border-gray-600"
         >
           {copied ? (
@@ -61,6 +61,7 @@ export default function Chat() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [pdfText, setPdfText] = useState({});
+    const [image, setImage] = useState({});
   const [pdfInfo, setPdfInfo] = useState(null);
   const [error, setError] = useState(null);
   const [fullText, setFullText] = useState(null);  // Store loaded text from file or clipboard
@@ -106,7 +107,7 @@ export default function Chat() {
   const handlePaste = async (e) => {
     const pastedText = e.clipboardData.getData('text');
     const wordCount = pastedText.trim().split(/\s+/).length;
-    
+
     if (wordCount > 100) { // Threshold for treating as full text
       e.preventDefault(); // Prevent pasting into textarea
       const newClipboardText = {
@@ -125,8 +126,8 @@ export default function Chat() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || !file.type.includes('pdf')) {
-      alert('Please select a valid PDF file');
+    if (!file) {
+      alert('Please select a valid file');
       return;
     }
 
@@ -144,27 +145,48 @@ export default function Chat() {
       const data = await res.json();
 
       if (data.success) {
-        const pdfData = {
-          id: Date.now(),
-          content: data.text,
-          wordCount: data.text.trim().split(/\s+/).length,
-          fileInfo: {
+        // Case for PDF files
+        if(data.text) {
+          const pdfData = {
+            id: Date.now(),
+            content: data.text,
+            wordCount: data.text.trim().split(/\s+/).length,
+            fileInfo: {
+              fileName: data.info.fileName,
+              fileSize: data.info.fileSize,
+              pageCount: data.info.pageCount
+            },
+            timestamp: Date.now()
+          };
+
+          setPdfText(prev => ({
+            ...prev,
+            [pdfData.id]: pdfData
+          }));
+          setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
+        }
+        // Case for Image files
+        else if (data.data) {
+          const image = {
+            id: Date.now(),
+            inlineData: {
+              data: data.data,
+              mimeType: data.info?.mimeType || 'image/png'
+            },
             fileName: data.info.fileName,
-            fileSize: data.info.fileSize,
-            pageCount: data.info.pageCount
-          },
-          timestamp: Date.now()
-        };
-        
-        setPdfText(prev => ({
-          ...prev,
-          [pdfData.id]: pdfData
-        }));
-        setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
-        
+          };
+
+          setImage(prev => ({
+            ...prev,
+            [image.id]: image
+          }));
+
+          setSourceOrder(prev => [...prev, `image-${image.id}`]);
+        }
+
         // Comment out the system messages
         /* setMessages(prev => [
-          ...prev, 
+          ...prev,
 
         setPdfText(data.text);
         setPdfInfo(data.info);
@@ -231,44 +253,10 @@ export default function Chat() {
     dragOverItem.current = null;
   };
 
-  const updateChunkResponse = (newChunk) => {
-    setMessages(prev => {
-      const lastMessage = prev[prev.length - 1];
-      if (lastMessage?.role === 'ai' && lastMessage.mode === 'infinite') {
-        const updatedChunks = {
-          ...lastMessage.chunks,
-          [newChunk.chunkNumber]: newChunk
-        };
-
-        // Now each chunk is treated as separate markdown
-        const orderedResponses = Object.values(updatedChunks)
-          .sort((a, b) => a.chunkNumber - b.chunkNumber)
-          .map(chunk => {
-            if (chunk.error) {
-              return `[Part ${chunk.chunkNumber}/${chunk.totalChunks}] Error: ${chunk.error}`;
-            }
-            return `### Part ${chunk.chunkNumber}/${chunk.totalChunks}\n\n${chunk.response}`;
-          })
-          .join('\n\n---\n\n');
-
-        return [
-          ...prev.slice(0, -1),
-          {
-            ...lastMessage,
-            text: orderedResponses,
-            chunks: updatedChunks,
-            status: 'streaming'
-          }
-        ];
-      }
-      return prev;
-    });
-  };
-
   const sendMessage = useCallback(async () => {
     if (!input.trim()) return;
     setError(null);
-    
+
     const userMessage = {
       role: 'user',
       text: input,
@@ -279,8 +267,8 @@ export default function Chat() {
     // Initialize AI message with loading state - Fix the condition here
     const initialAiMessage = {
       role: 'ai',
-      text: sourceOrder.length > 0 && infiniteMode 
-        ? 'Processing with infinite context...' 
+      text: sourceOrder.length > 0 && infiniteMode
+        ? 'Processing with infinite context...'
         : 'Processing with limited context...',
       mode: sourceOrder.length > 0 && infiniteMode ? 'infinite' : 'default',
       status: 'loading',
@@ -296,16 +284,40 @@ export default function Chat() {
       setMessages(prev => [...prev, userMessage, initialAiMessage]);
       setInput('');
 
-      // Prepare data for API call
-      const combinedText = sourceOrder.map(sourceId => {
-        const [type, id] = sourceId.split('-');
-        return type === 'pdf' ? pdfText[id].content : clipboardText[id].content;
-      }).join('\n\n');
+      // Check if we're in infinite context mode
+      const isInfiniteMode = sourceOrder.length > 0;
+
+      // Initialize AI message based on mode
+      const initialAiMessage = {
+        role: 'ai',
+        text: isInfiniteMode ? 'Processing chunks...' : '',
+        mode: isInfiniteMode ? 'infinite' : 'default',
+        chunks: {}
+      };
+      setMessages(prev => [...prev, initialAiMessage]);
+
+      const combinedText = sourceOrder
+        .filter(sourceId => !sourceId.startsWith('image'))
+        .map(sourceId => {
+          const [type, id] = sourceId.split('-');
+          return type === 'pdf'
+            ? pdfText[id]?.content
+            : clipboardText[id]?.content;
+        })
+      .join('\n\n');
+
+      const imagePayloads = sourceOrder
+      .filter(sourceId => sourceId.startsWith('image'))
+      .map(sourceId => {
+        const [, id] = sourceId.split('-');
+        return image[id];
+      });
 
       const payload = {
         message: infiniteMode ? userMessage.text : `${userMessage.text}\n\nContext:\n${combinedText}`,
         mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
         fullText: combinedText || null,
+        images: imagePayloads.length > 0 ? imagePayloads : null,
       };
 
       // Create or get chat document
@@ -333,7 +345,7 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      
+
       if (!infiniteMode || sourceOrder.length === 0) {
         // Handle normal mode response
         const data = await res.json();
@@ -343,7 +355,7 @@ export default function Chat() {
           mode: 'default',
           status: 'complete'
         };
-        
+
         // Update both local state and Firestore
         const updatedMessages = [...messages, userMessage, aiMessage];
         setMessages(updatedMessages);
@@ -351,7 +363,7 @@ export default function Chat() {
           messages: updatedMessages,
           updatedAt: new Date()
         }, { merge: true });
-        
+
         return;
       }
 
@@ -391,7 +403,7 @@ export default function Chat() {
                   })
                   .join('\n\n---\n\n');
                 aiMessage.status = 'streaming';
-                
+
                 // Update local state
                 setMessages(prev => {
                   const newMessages = [...prev];
@@ -399,7 +411,7 @@ export default function Chat() {
                   return newMessages;
                 });
                 break;
-              
+
               case 'complete':
                 // Save final version to Firestore
                 await setDoc(chatRef, {
@@ -407,7 +419,7 @@ export default function Chat() {
                   updatedAt: new Date()
                 }, { merge: true });
                 break;
-              
+
               case 'error':
                 setError(chunk.data.message);
                 break;
@@ -493,100 +505,102 @@ export default function Chat() {
   };
 
   const FullTextIndicator = () => sourceOrder.length > 0 && (
-    <div className="flex flex-col gap-1 px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-600">
-      <div className="flex gap-2 items-center flex-wrap">
-        <button 
-          onClick={() => setInfiniteMode(prev => !prev)}
-          className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
-            infiniteMode ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'
-          }`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          <span>Infinite Context {infiniteMode ? 'Enabled' : 'Disabled'}</span>
-          <div className={`w-2 h-2 rounded-full ${infiniteMode ? 'bg-white' : 'bg-gray-400'}`} />
-        </button>
-        <div className="flex items-center flex-wrap gap-1">
-          {sourceOrder.map((sourceId, index) => {
-            const [type, id] = sourceId.split('-');
-            const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
-            
-            return (
-              <div
-                key={sourceId}
-                className="flex items-center"
-              >
-                <div
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, sourceId)}
-                  onDragOver={(e) => handleDragOver(e, sourceId)}
-                  onDrop={handleDrop}
-                  className="flex items-center bg-gray-700 px-3 py-1 rounded-full cursor-move group hover:bg-gray-600"
-                >
-                  {type === 'pdf' ? (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span className="text-sm text-white">
-                        {source?.fileInfo?.fileName || 'PDF'}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <span className="text-sm text-white">Clipboard Text</span>
-                    </>
-                  )}
-                  <button
-                    onClick={() => {
-                      const [type, id] = sourceId.split('-');
-                      if (type === 'clipboard') {
-                        setClipboardText(prev => {
-                          const { [id]: removed, ...rest } = prev;
-                          return rest;
-                        });
-                      } else {
-                        setPdfText(prev => {
-                          const { [id]: removed, ...rest } = prev;
-                          return rest;
-                        });
-                      }
-                      setSourceOrder(prev => prev.filter(s => s !== sourceId));
-                    }}
-                    className="ml-2 text-gray-400 hover:text-gray-300"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                {/* {index < sourceOrder.length - 1 && (
-                  <div className="px-1 text-gray-400">+</div>
-                )} */}
-              </div>
-            );
-          })}
-        </div>
+  <div className="flex flex-col gap-1 px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-600">
+    <div className="flex gap-2 items-center flex-wrap">
+      <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-green-600 text-white">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+        <span>Infinite Context</span>
+        <div className="w-2 h-2 rounded-full bg-white" />
       </div>
-      <div className="text-xs text-gray-400 mt-1">
-        Total words: {
-          sourceOrder.reduce((total, sourceId) => {
-            const [type, id] = sourceId.split('-');
-            const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
-            return total + (source?.wordCount || 0);
-          }, 0)
-        }
+      <div className="flex items-center flex-wrap gap-1">
+        {sourceOrder.map((sourceId, index) => {
+          const [type, id] = sourceId.split('-');
+          const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
+
+          return (
+            <div
+              key={sourceId}
+              className="flex items-center"
+            >
+              <div
+                draggable
+                onDragStart={(e) => handleDragStart(e, sourceId)}
+                onDragOver={(e) => handleDragOver(e, sourceId)}
+                onDrop={handleDrop}
+                className="flex items-center bg-gray-700 px-3 py-1 rounded-full cursor-move group hover:bg-gray-600"
+              >
+                {type === 'pdf' ? (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="text-sm text-white">
+                      {source?.fileInfo?.fileName || 'PDF'}
+                    </span>
+                  </>
+                ) : type === 'image' ? (
+                  <>
+                    <img src={`data:${image[id].inlineData.mimeType};base64,${image[id].inlineData.data}`} alt="Uploaded Image" className="w-4 h-4 mr-2" />
+                    <span className="text-sm text-white">{image[id].fileName || 'Image'}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span className="text-sm text-white">Clipboard Text</span>
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    const [type, id] = sourceId.split('-');
+                    if (type === 'clipboard') {
+                      setClipboardText(prev => {
+                        const { [id]: removed, ...rest } = prev;
+                        return rest;
+                      });
+                    } else if (type === 'pdf') {
+                      setPdfText(prev => {
+                        const { [id]: removed, ...rest } = prev;
+                        return rest;
+                      });
+                    } else {
+                      setImage(prev => {
+                        const { [id]: removed, ...rest } = prev;
+                        return rest;
+                      });
+                    }
+                    setSourceOrder(prev => prev.filter(s => s !== sourceId));
+                  }}
+                  className="ml-2 text-gray-400 hover:text-gray-300"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
-  );
+    <div className="text-xs text-gray-400 mt-1">
+      Total words: {
+        sourceOrder.reduce((total, sourceId) => {
+          const [type, id] = sourceId.split('-');
+          const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
+          return total + (source?.wordCount || 0);
+        }, 0)
+      }
+    </div>
+  </div>
+);
 
 const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
   if (!sourceOrder || sourceOrder.length === 0) return null;
-  
+
   return (
     <div className="flex gap-2 mb-2">
       {/* Context mode indicator */}
@@ -596,7 +610,7 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
         <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={infiniteMode ? "M13 10V3L4 14h7v7l9-11h-7z" : "M9 12l2 2 4-4"} />
         </svg>
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d={infiniteMode ? "M13 10V3L4 14h7v7l9-11h-7z" : "M9 12l2 2 4-4"} />
         <span>{infiniteMode ? 'Infinite' : 'Limited'} Context</span>
       </div>
@@ -605,23 +619,34 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
       {sourceOrder.map((sourceId) => {
         const [type, id] = sourceId.split('-');
         return (
-          <div key={sourceId} className="flex items-center bg-gray-700 px-2 py-1 rounded-full text-xs">
-            {type === 'pdf' ? (
-              <>
-                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span>PDF</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                <span>Clipboard Text</span>
-              </>
-            )}
-          </div>
+            <div key={sourceId} className="flex items-center bg-gray-700 px-2 py-1 rounded-full text-xs">
+              {type === 'pdf' ? (
+                  <>
+                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span>PDF</span>
+                  </>
+              ) : type === 'image' ? (
+                  <>
+                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M3 3h18v18H3V3zm3 14l3-3 2 2 4-4 5 5"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                    </svg>
+                    <span>Image</span>
+                  </>
+              ) : (
+                  <>
+                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <span>Clipboard Text</span>
+                  </>
+              )}
+            </div>
         );
       })}
     </div>
@@ -629,44 +654,44 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
 };
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      <Head>
-        <title>AI Chat Assistant</title>
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+      <div className="min-h-screen bg-gray-900">
+        <Head>
+          <title>AI Chat Assistant</title>
+          <link rel="icon" href="/favicon.ico"/>
+        </Head>
 
-      <div className="flex h-screen">
-        {/* Sidebar */}
+        <div className="flex h-screen">
+          {/* Sidebar */}
 
-        <Sidebar userId={user?.uid}
-        onNewChat={() => {
-          setChatTitle("New Chat");
-          setMessages([]);
-          setChatId(null);
-        }}
-        chatId={chatId}
-        setChatId={setChatId} />
+          <Sidebar userId={user?.uid}
+                   onNewChat={() => {
+                     setChatTitle("New Chat");
+                     setMessages([]);
+                     setChatId(null);
+                   }}
+                   chatId={chatId}
+                   setChatId={setChatId}/>
 
-        {/* Main chat area */}
-        <div className="flex-1 flex flex-col">
+          {/* Main chat area */}
+          <div className="flex-1 flex flex-col">
 
-          {/* Header (Chat Title and the logout button) */}
-          <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
-            <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">{chatTitle}</h1>
-            <button
-              onClick={() => {
-                logout();
-                window.location.href = '/auth/login';
-              }}
-              className="text-red-300 hover:text-red-400 ml-auto px-4 py-2 rounded"
-            >
-              {/* Logout Icon */}
-              <LogOut className="h-6 w-6 justify-end" />
-            </button>
-          </div>
+            {/* Header (Chat Title and the logout button) */}
+            <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
+              <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">{chatTitle}</h1>
+              <button
+                  onClick={() => {
+                    logout();
+                    window.location.href = '/auth/login';
+                  }}
+                  className="text-red-300 hover:text-red-400 ml-auto px-4 py-2 rounded"
+              >
+                {/* Logout Icon */}
+                <LogOut className="h-6 w-6 justify-end"/>
+              </button>
+            </div>
 
 
-          {/* Messages */}
+            {/* Messages */}
           <div className="flex-1 overflow-y-auto">
             {messages.map((msg, idx) => (
               <div key={idx} className={`p-8 ${
@@ -682,8 +707,8 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                   </div>
                   <div className="flex-1">
                     {msg.sourceOrder && (
-                      <MessageAttachmentIndicator 
-                        sourceOrder={msg.sourceOrder} 
+                      <MessageAttachmentIndicator
+                        sourceOrder={msg.sourceOrder}
                         infiniteMode={msg.infiniteMode}
                       />
                     )}
@@ -720,15 +745,15 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                 <div className="flex">
                   {/* File upload button to the left of input */}
                   <div className="flex items-center pl-3">
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept=".pdf" 
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf, image/* "
                       onChange={handleFileUpload}
-                      id="chat-file-upload" 
+                      id="chat-file-upload"
                     />
-                    <label 
-                      htmlFor="chat-file-upload" 
+                    <label
+                      htmlFor="chat-file-upload"
                       className="cursor-pointer p-2 rounded-full hover:bg-gray-600 transition-colors"
                       title="Upload PDF"
                     >
@@ -750,7 +775,7 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Text input */}
                   <textarea
                     ref={textareaRef}
@@ -763,8 +788,8 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                     onKeyDown={handleKeyDown}
                     rows={1}
                     className="flex-1 bg-transparent text-white rounded-t-lg pl-2 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border-b border-gray-600"
-                    placeholder={fullText 
-                      ? "What would you like to do with the loaded text?" 
+                    placeholder={fullText
+                      ? "What would you like to do with the loaded text?"
                       : "Send a message or paste a long text..."
                     }
                     style={{ maxHeight: '200px' }}
