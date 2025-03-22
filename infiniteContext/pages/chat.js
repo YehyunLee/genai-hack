@@ -3,7 +3,12 @@ import Head from 'next/head';
 import { logout } from "./auth/auth";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import { db } from "../firebaseConfig";
+import { collection, addDoc, doc, setDoc } from "firebase/firestore";
+import Sidebar from './components/sidebar';
+import { onSnapshot } from "firebase/firestore";
 import ReactMarkdown from 'react-markdown';
+import { LogOut } from "lucide-react";
 
 const CodeBlock = ({ children, className }) => {
   const codeRef = useRef(null);
@@ -69,6 +74,8 @@ export default function Chat() {
   const [processingChunks, setProcessingChunks] = useState({});
   const [visibleMessages, setVisibleMessages] = useState({});
   const [user, setUser] = useState(null);
+  const [chatId, setChatId] = useState(null); // Store chat ID
+  const [chatTitle, setChatTitle] = useState("New Chat"); // Store chat title
   const [infiniteMode, setInfiniteMode] = useState(true);
 
   useEffect(() => {
@@ -300,6 +307,20 @@ export default function Chat() {
         fullText: combinedText || null,
       };
 
+      let tempChatId = chatId;
+
+      // Create a new chat document if it doesn't exist
+      if (!chatId) {
+        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
+          title: userMessage.text,
+          createdAt: new Date(),
+          messages: []
+        });
+        setChatId(chatDocRef.id);
+        tempChatId = chatDocRef.id;
+        setChatTitle(userMessage.text);
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -361,6 +382,34 @@ export default function Chat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    // chatId
+    if (chatId) {
+      const unsubscribe = onSnapshot(doc(db, `users/${user.uid}/chats/${chatId}`), (doc) => {
+        const chatData = doc.data();
+        if (chatData) {
+          setChatTitle(chatData.title || "Untitled Chat");
+          setMessages(chatData.messages || []);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [chatId, user]);
+  // useEffect(() => {
+  //   if (fullText) {
+  //     const newMessage = {
+  //       role: 'user',
+  //       text: fullText.content,
+
+  //       sourceOrder: [`${fullText.source}-${fullText.id}`]
+  //     };
+  //     setMessages(prev => [...prev, newMessage]);
+  //     setFullText(null);
+  //     setActiveSource(null);
+  //     setSourceOrder(prev => prev.filter(sourceId => sourceId !== `${fullText.source}-${fullText.id}`));
+  //   }
+  // }, [fullText]);
 
   const switchSource = (source) => {
     if (source === 'clipboard' && clipboardText) {
@@ -525,17 +574,35 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
 
       <div className="flex h-screen">
         {/* Sidebar */}
-        <div className="hidden md:flex w-64 bg-gray-800 flex-col p-4">
-          <button className="flex items-center justify-center gap-2 px-4 py-2 mb-4 w-full rounded border border-white/20 text-white hover:bg-gray-700 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Chat
-          </button>
-        </div>
+
+        <Sidebar userId={user?.uid}
+        onNewChat={() => {
+          setChatTitle("New Chat");
+          setMessages([]);
+          setChatId(null);
+        }}
+        chatId={chatId}
+        setChatId={setChatId} />
 
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">
+
+          {/* Header (Chat Title and the logout button) */}
+          <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
+            <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">{chatTitle}</h1>
+            <button
+              onClick={() => {
+                logout();
+                window.location.href = '/auth/login';
+              }}
+              className="text-red-300 hover:text-red-400 ml-auto px-4 py-2 rounded"
+            >
+              {/* Logout Icon */}
+              <LogOut className="h-6 w-6 justify-end" />
+            </button>
+          </div>
+
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto">
             {messages.map((msg, idx) => (
