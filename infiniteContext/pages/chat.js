@@ -81,11 +81,7 @@ export default function Chat() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!currentUser) {
-        window.location.href = '/auth/login'; // Redirect to login page
-      } else {
-        setUser(currentUser);
-      }
+      setUser(currentUser);
     });
     return () => unsubscribe();
   }, []);
@@ -276,7 +272,6 @@ export default function Chat() {
       infiniteMode
     };
 
-    // Initialize AI message with loading state - Fix the condition here
     const initialAiMessage = {
       role: 'ai',
       text: sourceOrder.length > 0 && infiniteMode 
@@ -284,7 +279,7 @@ export default function Chat() {
         : 'Processing with limited context...',
       mode: sourceOrder.length > 0 && infiniteMode ? 'infinite' : 'default',
       status: 'loading',
-      infiniteMode: sourceOrder.length > 0 && infiniteMode // Add this to track mode in message
+      infiniteMode: sourceOrder.length > 0 && infiniteMode
     };
 
     try {
@@ -308,20 +303,9 @@ export default function Chat() {
         fullText: combinedText || null,
       };
 
-      // Create or get chat document
-      let chatRef;
-      if (!chatId) {
-        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
-          title: userMessage.text,
-          createdAt: new Date(),
-          messages: [userMessage, initialAiMessage] // Include loading state
-        });
-        setChatId(chatDocRef.id);
-        setChatTitle(userMessage.text);
-        chatRef = chatDocRef;
-      } else {
-        chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
-        // Update Firestore with loading state
+      // Only interact with Firestore if user is logged in
+      if (user && chatId) {
+        const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
         await setDoc(chatRef, {
           messages: [...messages, userMessage, initialAiMessage],
           updatedAt: new Date()
@@ -347,10 +331,13 @@ export default function Chat() {
         // Update both local state and Firestore
         const updatedMessages = [...messages, userMessage, aiMessage];
         setMessages(updatedMessages);
-        await setDoc(chatRef, {
-          messages: updatedMessages,
-          updatedAt: new Date()
-        }, { merge: true });
+        if (user && chatId) {
+          const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
+          await setDoc(chatRef, {
+            messages: updatedMessages,
+            updatedAt: new Date()
+          }, { merge: true });
+        }
         
         return;
       }
@@ -402,10 +389,13 @@ export default function Chat() {
               
               case 'complete':
                 // Save final version to Firestore
-                await setDoc(chatRef, {
-                  messages: [...messages, userMessage, aiMessage],
-                  updatedAt: new Date()
-                }, { merge: true });
+                if (user && chatId) {
+                  const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
+                  await setDoc(chatRef, {
+                    messages: [...messages, userMessage, aiMessage],
+                    updatedAt: new Date()
+                  }, { merge: true });
+                }
                 break;
               
               case 'error':
@@ -421,11 +411,7 @@ export default function Chat() {
       setError(err.message);
       console.error('Error:', err);
     }
-  }, [input, messages, sourceOrder, infiniteMode, chatId, user?.uid, pdfText, clipboardText]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [input, messages, sourceOrder, infiniteMode, chatId, user, pdfText, clipboardText]);
 
   useEffect(() => {
     if (!chatId || !user) return;
@@ -631,38 +617,51 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
   return (
     <div className="min-h-screen bg-gray-900">
       <Head>
-        <title>AI Chat Assistant</title>
+        <title>Infinite Context Chatbot</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
       <div className="flex h-screen">
         {/* Sidebar */}
-
-        <Sidebar userId={user?.uid}
-        onNewChat={() => {
-          setChatTitle("New Chat");
-          setMessages([]);
-          setChatId(null);
-        }}
-        chatId={chatId}
-        setChatId={setChatId} />
+        {user && (
+          <Sidebar userId={user?.uid}
+          onNewChat={() => {
+            setChatTitle("New Chat");
+            setMessages([]);
+            setChatId(null);
+          }}
+          chatId={chatId}
+          setChatId={setChatId} />
+        )}
 
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">
 
           {/* Header (Chat Title and the logout button) */}
           <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
-            <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">{chatTitle}</h1>
-            <button
-              onClick={() => {
-                logout();
-                window.location.href = '/auth/login';
-              }}
-              className="text-red-300 hover:text-red-400 ml-auto px-4 py-2 rounded"
-            >
-              {/* Logout Icon */}
-              <LogOut className="h-6 w-6 justify-end" />
-            </button>
+            <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">
+              {user ? chatTitle : "Infinite Context Chatbot"}
+            </h1>
+            <div className="ml-auto">
+              {user ? (
+                <button
+                  onClick={() => {
+                    logout();
+                    window.location.href = '/auth/login';
+                  }}
+                  className="text-red-300 hover:text-red-400 px-4 py-2 rounded"
+                >
+                  <LogOut className="h-6 w-6" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => window.location.href = '/auth/login'}
+                  className="text-blue-300 hover:text-blue-400 px-4 py-2 rounded text-sm"
+                >
+                  Login to Save Chats
+                </button>
+              )}
+            </div>
           </div>
 
 
