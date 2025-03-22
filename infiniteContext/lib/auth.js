@@ -36,7 +36,6 @@ export const signIn = async (email, password) => {
 };
 
 export const logout = async () => {
-export const logout = async () => {
   try {
     await signOut(auth);
     console.log("User signed out");
