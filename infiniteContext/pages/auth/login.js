@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signIn, signUp } from "./auth";
+import { signIn, signUp } from "../../lib/auth";
 import Head from 'next/head';
 
 export default function LoginPage() {
