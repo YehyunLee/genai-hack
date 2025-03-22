@@ -309,6 +309,7 @@ export default function Chat() {
       // Create a new chat document if it doesn't exist
       if (!chatId) {
         const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
+          title: userMessage.text,
           createdAt: new Date(),
           messages: []
         });
