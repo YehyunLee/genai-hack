@@ -1,7 +1,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
-import pdfParse from 'pdf-parse';
+import { processFile } from './_fileProcessors';
 
 export const config = {
   api: {
@@ -37,35 +37,21 @@ export default async function handler(req, res) {
 
     // In newer versions of formidable, the file might be in an array
     const file = files.file?.[0] || files.file;
-    
+
     if (!file || !file.filepath) {
       return res.status(400).json({ error: 'No valid file uploaded' });
     }
 
-    // Read the PDF file
-    const dataBuffer = fs.readFileSync(file.filepath);
-    
-    // Extract text from PDF
-    const pdfData = await pdfParse(dataBuffer);
-    const extractedText = pdfData.text;
-    
-    // Get additional PDF info
-    const pdfInfo = {
-      pageCount: pdfData.numpages,
-      fileName: file.originalFilename || 'uploaded-file.pdf',
-      fileSize: (file.size / 1024).toFixed(2) + ' KB'
-    };
-    
-    // Delete file after done
-    fs.unlinkSync(file.filepath);
+    // Get file type and extension
+    const fileType = file.mimetype || 'application/octet-stream';
+    const fileExtension = path.extname(file.originalFilename || '').slice(1).toLowerCase();
 
-    return res.status(200).json({
-      success: true,
-      text: extractedText,
-      info: pdfInfo
-    });
+    // Process the file based on its type
+    const result = await processFile(file, fileType, fileExtension);
+
+    return res.status(200).json(result);
   } catch (error) {
-    console.error('PDF processing error:', error);
+    console.error('File processing error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
