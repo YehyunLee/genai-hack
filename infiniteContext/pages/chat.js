@@ -19,7 +19,7 @@ const CodeBlock = ({ children, className }) => {
 
   return (
     <div className="relative group">
-      <pre className={`${className} bg-gray-900 rounded-lg p-4 overflow-x-auto`}>
+      <pre className={`${className} bg-gray-900 rounded-lg p-4 whitespace-pre-wrap break-all`}>
         <button
           onClick={copyToClipboard}
           className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity 
@@ -35,7 +35,7 @@ const CodeBlock = ({ children, className }) => {
             </svg>
           )}
         </button>
-        <code ref={codeRef} className="text-sm font-mono text-gray-200">
+        <code ref={codeRef} className="text-sm font-mono text-gray-200 break-words">
           {children}
         </code>
       </pre>

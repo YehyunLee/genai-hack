@@ -14,12 +14,16 @@ module.exports = {
               padding: 0,
               marginTop: '1em',
               marginBottom: '1em',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
             },
             code: {
               backgroundColor: 'rgb(31, 41, 55)',
               padding: '0.25rem',
               borderRadius: '0.25rem',
               fontWeight: '400',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
             },
             'code::before': {
               content: '""',
