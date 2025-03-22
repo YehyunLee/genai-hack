@@ -5,7 +5,32 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      typography: {
+        DEFAULT: {
+          css: {
+            pre: {
+              backgroundColor: 'transparent',
+              padding: 0,
+              marginTop: '1em',
+              marginBottom: '1em',
+            },
+            code: {
+              backgroundColor: 'rgb(31, 41, 55)',
+              padding: '0.25rem',
+              borderRadius: '0.25rem',
+              fontWeight: '400',
+            },
+            'code::before': {
+              content: '""',
+            },
+            'code::after': {
+              content: '""',
+            }
+          }
+        }
+      }
+    },
   },
   plugins: [
     require('@tailwindcss/typography'),

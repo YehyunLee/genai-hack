@@ -5,6 +5,44 @@ import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 import ReactMarkdown from 'react-markdown';
 
+const CodeBlock = ({ children, className }) => {
+  const codeRef = useRef(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = () => {
+    if (codeRef.current) {
+      navigator.clipboard.writeText(codeRef.current.textContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="relative group">
+      <pre className={`${className} bg-gray-900 rounded-lg p-4 overflow-x-auto`}>
+        <button
+          onClick={copyToClipboard}
+          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity 
+                   bg-gray-800 hover:bg-gray-700 p-2 rounded border border-gray-600"
+        >
+          {copied ? (
+            <svg className="h-4 w-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+            </svg>
+          )}
+        </button>
+        <code ref={codeRef} className="text-sm font-mono text-gray-200">
+          {children}
+        </code>
+      </pre>
+    </div>
+  );
+};
+
 export default function Chat() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -489,7 +527,16 @@ export default function Chat() {
                   <div className="flex-1">
                     {msg.sourceOrder && <MessageAttachmentIndicator sourceOrder={msg.sourceOrder} />}
                     <div className="prose prose-invert max-w-none">
-                      <ReactMarkdown>
+                      <ReactMarkdown
+                        components={{
+                          code: ({ node, inline, className, children, ...props }) => {
+                            if (inline) {
+                              return <code className="bg-gray-700 rounded px-1 py-0.5" {...props}>{children}</code>;
+                            }
+                            return <CodeBlock className={className}>{children}</CodeBlock>;
+                          }
+                        }}
+                      >
                         {msg.text}
                       </ReactMarkdown>
                     </div>
