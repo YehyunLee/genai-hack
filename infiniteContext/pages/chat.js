@@ -136,6 +136,7 @@ export default function Chat() {
       setError(err.message);
       console.error('Error:', err);
     }
+    adjustTextareaHeight()
   };
 
   const toggleVisibility = (index) => {
