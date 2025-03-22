@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { logout } from "./auth/auth";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import ReactMarkdown from 'react-markdown';
 
 export default function Chat() {
   const [input, setInput] = useState('');
@@ -181,24 +182,22 @@ export default function Chat() {
     setMessages(prev => {
       const lastMessage = prev[prev.length - 1];
       if (lastMessage?.role === 'ai' && lastMessage.mode === 'infinite') {
-        // Store new chunk while maintaining order
         const updatedChunks = {
           ...lastMessage.chunks,
           [newChunk.chunkNumber]: newChunk
         };
 
-        // Create ordered response text from available chunks
+        // Now each chunk is treated as separate markdown
         const orderedResponses = Object.values(updatedChunks)
           .sort((a, b) => a.chunkNumber - b.chunkNumber)
           .map(chunk => {
             if (chunk.error) {
               return `[Part ${chunk.chunkNumber}/${chunk.totalChunks}] Error: ${chunk.error}`;
             }
-            return `[Part ${chunk.chunkNumber}/${chunk.totalChunks}]\n${chunk.response}`;
+            return `### Part ${chunk.chunkNumber}/${chunk.totalChunks}\n\n${chunk.response}`;
           })
-          .join('\n\n');
+          .join('\n\n---\n\n');
 
-        // Update message with latest chunks
         return [
           ...prev.slice(0, -1),
           {
@@ -489,7 +488,11 @@ export default function Chat() {
                   </div>
                   <div className="flex-1">
                     {msg.sourceOrder && <MessageAttachmentIndicator sourceOrder={msg.sourceOrder} />}
-                    <p className="text-gray-100 whitespace-pre-wrap">{msg.text}</p>
+                    <div className="prose prose-invert max-w-none">
+                      <ReactMarkdown>
+                        {msg.text}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               </div>
