@@ -93,8 +93,8 @@ export default function Chat() {
         }));
         setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
         
-        // Add a system message about the uploaded file and extracted text
-        setMessages(prev => [
+        // Comment out the system messages
+        /* setMessages(prev => [
           ...prev, 
           {
             role: 'system',
@@ -104,7 +104,7 @@ export default function Chat() {
             role: 'system',
             text: `Text extracted from PDF:\n\n${data.text}`
           }
-        ]);
+        ]); */
         
         adjustTextareaHeight();
       } else {
