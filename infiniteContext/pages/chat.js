@@ -34,15 +34,22 @@ export default function Chat() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
 
-    // Call the simple JS backend
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: prompt }),
-    });
-    const data = await res.json();
-    const aiMessage = { role: 'ai', text: data.response };
-    setMessages(prev => [...prev, aiMessage]);
+    const combinedMessage = `${prompt}\n${input}`;
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: combinedMessage }),
+      });
+      const data = await res.json();
+      const aiMessage = { role: 'ai', text: data.response };
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      const aiMessage = { role: 'ai', text: 'Error generating response. Please try again.' };
+      setMessages(prev => [...prev, aiMessage]);
+    }
   };
 
   useEffect(() => {
