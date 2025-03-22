@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
-import { logout } from "./auth/auth";
+import { logout } from "../lib/auth";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 import { db } from "../firebaseConfig";
