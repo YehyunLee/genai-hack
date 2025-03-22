@@ -87,11 +87,9 @@ export default function Chat() {
         method: 'POST',
         body: formData,
       });
-      console.log("res", res);
 
       const data = await res.json();
 
-      console.log("data", data);
       if (data.success) {
         // Case for PDF files
         if(data.text) {
@@ -121,6 +119,7 @@ export default function Chat() {
               data: data.data,
               mimeType: data.info?.mimeType || 'image/png'
             },
+            fileName: data.info.fileName,
           };
 
           setImage(prev => ({
@@ -286,7 +285,6 @@ export default function Chat() {
         images: imagePayloads.length > 0 ? imagePayloads : null,
       };
 
-      console.log("payload", payload);
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,7 +302,6 @@ export default function Chat() {
             mode: 'default'
           }
         ]);
-        return;
       }
 
       // Handle infinite mode response with streaming
@@ -325,6 +322,7 @@ export default function Chat() {
             const chunk = JSON.parse(line);
             switch (chunk.type) {
               case 'chunk':
+                console.log(chunk.data);
                 updateChunkResponse(chunk.data);
                 break;
               case 'complete':
@@ -369,92 +367,99 @@ export default function Chat() {
     }
   };
 
-  const FullTextIndicator = () => sourceOrder.length > 0 && (
-    <div className="flex flex-col gap-1 px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-600">
-      <div className="flex gap-2 items-center flex-wrap">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-green-600 text-white">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          <span>Infinite Context</span>
-          <div className="w-2 h-2 rounded-full bg-white" />
-        </div>
-        <div className="flex items-center flex-wrap gap-1">
-          {sourceOrder.map((sourceId, index) => {
-            const [type, id] = sourceId.split('-');
-            const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
-
-            return (
-              <div
-                key={sourceId}
-                className="flex items-center"
-              >
-                <div
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, sourceId)}
-                  onDragOver={(e) => handleDragOver(e, sourceId)}
-                  onDrop={handleDrop}
-                  className="flex items-center bg-gray-700 px-3 py-1 rounded-full cursor-move group hover:bg-gray-600"
-                >
-                  {type === 'pdf' ? (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span className="text-sm text-white">
-                        {source?.fileInfo?.fileName || 'PDF'}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <span className="text-sm text-white">Clipboard Text</span>
-                    </>
-                  )}
-                  <button
-                    onClick={() => {
-                      const [type, id] = sourceId.split('-');
-                      if (type === 'clipboard') {
-                        setClipboardText(prev => {
-                          const { [id]: removed, ...rest } = prev;
-                          return rest;
-                        });
-                      } else {
-                        setPdfText(prev => {
-                          const { [id]: removed, ...rest } = prev;
-                          return rest;
-                        });
-                      }
-                      setSourceOrder(prev => prev.filter(s => s !== sourceId));
-                    }}
-                    className="ml-2 text-gray-400 hover:text-gray-300"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                {/* {index < sourceOrder.length - 1 && (
-                  <div className="px-1 text-gray-400">+</div>
-                )} */}
-              </div>
-            );
-          })}
-        </div>
+const FullTextIndicator = () => sourceOrder.length > 0 && (
+  <div className="flex flex-col gap-1 px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-600">
+    <div className="flex gap-2 items-center flex-wrap">
+      <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-green-600 text-white">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+        <span>Infinite Context</span>
+        <div className="w-2 h-2 rounded-full bg-white" />
       </div>
-      <div className="text-xs text-gray-400 mt-1">
-        Total words: {
-          sourceOrder.reduce((total, sourceId) => {
-            const [type, id] = sourceId.split('-');
-            const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
-            return total + (source?.wordCount || 0);
-          }, 0)
-        }
+      <div className="flex items-center flex-wrap gap-1">
+        {sourceOrder.map((sourceId, index) => {
+          const [type, id] = sourceId.split('-');
+          const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
+
+          return (
+            <div
+              key={sourceId}
+              className="flex items-center"
+            >
+              <div
+                draggable
+                onDragStart={(e) => handleDragStart(e, sourceId)}
+                onDragOver={(e) => handleDragOver(e, sourceId)}
+                onDrop={handleDrop}
+                className="flex items-center bg-gray-700 px-3 py-1 rounded-full cursor-move group hover:bg-gray-600"
+              >
+                {type === 'pdf' ? (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="text-sm text-white">
+                      {source?.fileInfo?.fileName || 'PDF'}
+                    </span>
+                  </>
+                ) : type === 'image' ? (
+                  <>
+                    <img src={`data:${image[id].inlineData.mimeType};base64,${image[id].inlineData.data}`} alt="Uploaded Image" className="w-4 h-4 mr-2" />
+                    <span className="text-sm text-white">{image[id].fileName || 'Image'}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span className="text-sm text-white">Clipboard Text</span>
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    const [type, id] = sourceId.split('-');
+                    if (type === 'clipboard') {
+                      setClipboardText(prev => {
+                        const { [id]: removed, ...rest } = prev;
+                        return rest;
+                      });
+                    } else if (type === 'pdf') {
+                      setPdfText(prev => {
+                        const { [id]: removed, ...rest } = prev;
+                        return rest;
+                      });
+                    } else {
+                      setImage(prev => {
+                        const { [id]: removed, ...rest } = prev;
+                        return rest;
+                      });
+                    }
+                    setSourceOrder(prev => prev.filter(s => s !== sourceId));
+                  }}
+                  className="ml-2 text-gray-400 hover:text-gray-300"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
-  );
+    <div className="text-xs text-gray-400 mt-1">
+      Total words: {
+        sourceOrder.reduce((total, sourceId) => {
+          const [type, id] = sourceId.split('-');
+          const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
+          return total + (source?.wordCount || 0);
+        }, 0)
+      }
+    </div>
+  </div>
+);
 
   return (
     <div className="min-h-screen bg-gray-900">
