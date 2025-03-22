@@ -6,6 +6,53 @@ import { onAuthStateChanged } from "firebase/auth";
 import { db } from "../firebaseConfig";
 import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 
+
+import ReactMarkdown from 'react-markdown';
+
+const CodeBlock = ({ children, className }) => {
+  const codeRef = useRef(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = () => {
+    if (codeRef.current) {
+      navigator.clipboard.writeText(codeRef.current.textContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="relative group">
+      <pre className={`${className} bg-gray-900 rounded-lg p-4 whitespace-pre-wrap break-all`}>
+        <button
+          onClick={copyToClipboard}
+          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity 
+                   bg-gray-800 hover:bg-gray-700 p-2 rounded border border-gray-600"
+        >
+          {copied ? (
+            <svg className="h-4 w-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+            </svg>
+          )}
+        </button>
+        <code ref={codeRef} className="text-sm font-mono text-gray-200 break-words">
+          {children}
+        </code>
+      </pre>
+    </div>
+  );
+};
+
+const LoadingMessage = () => (
+  <div className="inline-block animate-pulse bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700 rounded px-2 py-1">
+    Processing chunks...
+  </div>
+);
+
 export default function Chat() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -184,24 +231,22 @@ export default function Chat() {
     setMessages(prev => {
       const lastMessage = prev[prev.length - 1];
       if (lastMessage?.role === 'ai' && lastMessage.mode === 'infinite') {
-        // Store new chunk while maintaining order
         const updatedChunks = {
           ...lastMessage.chunks,
           [newChunk.chunkNumber]: newChunk
         };
 
-        // Create ordered response text from available chunks
+        // Now each chunk is treated as separate markdown
         const orderedResponses = Object.values(updatedChunks)
           .sort((a, b) => a.chunkNumber - b.chunkNumber)
           .map(chunk => {
             if (chunk.error) {
               return `[Part ${chunk.chunkNumber}/${chunk.totalChunks}] Error: ${chunk.error}`;
             }
-            return `[Part ${chunk.chunkNumber}/${chunk.totalChunks}]\n${chunk.response}`;
+            return `### Part ${chunk.chunkNumber}/${chunk.totalChunks}\n\n${chunk.response}`;
           })
-          .join('\n\n');
+          .join('\n\n---\n\n');
 
-        // Update message with latest chunks
         return [
           ...prev.slice(0, -1),
           {
@@ -219,7 +264,11 @@ export default function Chat() {
   const sendMessage = async () => {
     if (!input.trim()) return;
     setError(null);
-    const userMessage = { role: 'user', text: input };
+    const userMessage = { 
+      role: 'user', 
+      text: input,
+      sourceOrder: [...sourceOrder] // Save current sourceOrder with the message
+    };
     adjustTextareaHeight();
 
     try {
@@ -360,7 +409,7 @@ export default function Chat() {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
-          <span>Infinite Context</span>
+          <span>Infinite Context Enabled</span>
           <div className="w-2 h-2 rounded-full bg-white" />
         </div>
         <div className="flex items-center flex-wrap gap-1">
@@ -440,6 +489,37 @@ export default function Chat() {
     </div>
   );
 
+  const MessageAttachmentIndicator = ({ sourceOrder }) => {
+    if (!sourceOrder || sourceOrder.length === 0) return null;
+    
+    return (
+      <div className="flex gap-2 mb-2">
+        {sourceOrder.map((sourceId) => {
+          const [type, id] = sourceId.split('-');
+          return (
+            <div key={sourceId} className="flex items-center bg-gray-700 px-2 py-1 rounded-full text-xs">
+              {type === 'pdf' ? (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span>PDF</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span>Clipboard Text</span>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-900">
       <Head>
@@ -475,7 +555,25 @@ export default function Chat() {
                     {msg.role === 'ai' ? 'AI' : msg.role === 'system' ? 'S' : 'U'}
                   </div>
                   <div className="flex-1">
-                    <p className="text-gray-100 whitespace-pre-wrap">{msg.text}</p>
+                    {msg.sourceOrder && <MessageAttachmentIndicator sourceOrder={msg.sourceOrder} />}
+                    <div className="prose prose-invert max-w-none">
+                      {msg.text === 'Processing chunks...' ? (
+                        <LoadingMessage />
+                      ) : (
+                        <ReactMarkdown
+                          components={{
+                            code: ({ node, inline, className, children, ...props }) => {
+                              if (inline) {
+                                return <code className="bg-gray-700 rounded px-1 py-0.5" {...props}>{children}</code>;
+                              }
+                              return <CodeBlock className={className}>{children}</CodeBlock>;
+                            }
+                          }}
+                        >
+                          {msg.text}
+                        </ReactMarkdown>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
