@@ -9,6 +9,7 @@ export default function Chat() {
   const [isUploading, setIsUploading] = useState(false);
   const [pdfText, setPdfText] = useState('');
   const [pdfInfo, setPdfInfo] = useState(null);
+  const [error, setError] = useState(null);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -83,9 +84,8 @@ export default function Chat() {
   
   const sendMessage = async () => {
     if (!input.trim()) return;
+    setError(null);
     const userMessage = { role: 'user', text: input };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
     
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -104,6 +104,41 @@ export default function Chat() {
       chunks: data.chunks 
     };
     setMessages(prev => [...prev, aiMessage]);
+    try {
+      // Check message size before sending
+      if (new Blob([input]).size > 10 * 1024 * 1024) { // 10MB
+        throw new Error('Message is too large. Please reduce the size.');
+      }
+
+      setMessages(prev => [...prev, userMessage]);
+      setInput('');
+      
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: userMessage.text,
+          mode: isInfiniteMode ? 'infinite' : 'default'
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || `Error: ${res.status}`);
+      }
+
+      const aiMessage = { 
+        role: 'ai', 
+        text: data.response,
+        mode: data.mode,
+        chunks: data.chunks 
+      };
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (err) {
+      setError(err.message);
+      console.error('Error:', err);
+    }
   };
 
   useEffect(() => {
@@ -260,6 +295,11 @@ export default function Chat() {
                   </span>
                 </div>
               </div>
+              {error && (
+                <div className="max-w-3xl mx-auto px-4 py-2 mt-2">
+                  <p className="text-red-500 text-sm">{error}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
