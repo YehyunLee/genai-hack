@@ -2,6 +2,7 @@ import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
 import pdfParse from 'pdf-parse';
+import os from 'os';
 
 export const config = {
   api: {
@@ -15,11 +16,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Create temp directory if it doesn't exist
-    const tempDir = path.join(process.cwd(), 'temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
+    // Use system temp directory
+    const tempDir = os.tmpdir();
 
     const form = formidable({
       uploadDir: tempDir,
@@ -42,28 +40,33 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No valid file uploaded' });
     }
 
-    // Read the PDF file
-    const dataBuffer = fs.readFileSync(file.filepath);
-    
-    // Extract text from PDF
-    const pdfData = await pdfParse(dataBuffer);
-    const extractedText = pdfData.text;
-    
-    // Get additional PDF info
-    const pdfInfo = {
-      pageCount: pdfData.numpages,
-      fileName: file.originalFilename || 'uploaded-file.pdf',
-      fileSize: (file.size / 1024).toFixed(2) + ' KB'
-    };
-    
-    // Delete file after done
-    fs.unlinkSync(file.filepath);
+    try {
+      // Read the PDF file
+      const dataBuffer = fs.readFileSync(file.filepath);
+      
+      // Extract text from PDF
+      const pdfData = await pdfParse(dataBuffer);
+      const extractedText = pdfData.text;
+      
+      // Get additional PDF info
+      const pdfInfo = {
+        pageCount: pdfData.numpages,
+        fileName: file.originalFilename || 'uploaded-file.pdf',
+        fileSize: (file.size / 1024).toFixed(2) + ' KB'
+      };
 
-    return res.status(200).json({
-      success: true,
-      text: extractedText,
-      info: pdfInfo
-    });
+      // Send response
+      res.status(200).json({
+        success: true,
+        text: extractedText,
+        info: pdfInfo
+      });
+    } finally {
+      // Always clean up the temp file
+      if (file.filepath && fs.existsSync(file.filepath)) {
+        fs.unlinkSync(file.filepath);
+      }
+    }
   } catch (error) {
     console.error('PDF processing error:', error);
     return res.status(500).json({ error: error.message });
