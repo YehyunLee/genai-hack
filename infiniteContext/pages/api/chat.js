@@ -34,15 +34,21 @@ const cohereResponse = async (message) => {
     return response;
 }
 
-// Simulated chunk processing
-const processLongText = (text, chunk_size=100) => {
-    // Simulate splitting text into chunks
-    // const chunks = text.match(/.{1,100}/g) || [];
-    const chunks = text.match(new RegExp(`.{1,${chunk_size}}`, 'g')) || [];
-    return chunks.map(chunk => ({
-        chunk,
-        summary: `Processed chunk of size ${chunk.length}`
-    }));
+// Process text by word count
+const processLongText = (text, chunk_size=50) => {
+    // Split text into words and group them into chunks
+    const words = text.split(/\s+/);
+    const chunks = [];
+    
+    for (let i = 0; i < words.length; i += chunk_size) {
+        const chunk = words.slice(i, i + chunk_size).join(' ');
+        chunks.push({
+            chunk,
+            summary: `${chunk} (word count: ${words.slice(i, i + chunk_size).length})`
+        });
+    }
+    
+    return chunks;
 };
 
 export default async function handler(req, res) {
