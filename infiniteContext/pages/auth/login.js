@@ -18,7 +18,7 @@ export default function LoginPage() {
         window.location.href = "/chat";
       } else {
         await signIn(email, password);
-        alert("Logged in!");
+        // alert("Logged in!");
         // Redirect to chat page
         window.location.href = "/chat";
       }
@@ -30,7 +30,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center">
       <Head>
-        <title>{isRegistering ? "Sign Up" : "Login"} - AI Chat Assistant</title>
+        <title>{isRegistering ? "Sign Up" : "Login"} - Infinite Context</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
