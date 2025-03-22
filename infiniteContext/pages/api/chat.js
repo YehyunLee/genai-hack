@@ -25,8 +25,14 @@ const modelResponse = (model, message) => {
 }
 
 const geminiResponse = async (message) => {
-  const response = await model.generate(message);
-  return response;
+  try {
+    const result = await model.generateContent(message);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Gemini API Error:', error);
+    throw new Error(`Gemini API error: ${error.message}`);
+  }
 }
 
 const cohereResponse = async (message) => {
@@ -67,33 +73,30 @@ export default async function handler(req, res) {
       return res.status(413).json({ error: 'Request entity too large' });
     }
 
-    try {
-      if (mode === 'infinite') {
-        // Handle infinite context mode
-        const chunks = processLongText(message);
-        const combinedResponse = chunks.map(c => c.summary).join('\n');
-        
+    if (mode === 'infinite') {
+      // Handle infinite context mode
+      const chunks = processLongText(message);
+      const combinedResponse = chunks.map(c => c.summary).join('\n');
+      
+      return res.status(200).json({
+        response: `Infinite Context Processing Results:\n${combinedResponse}`,
+        chunks: chunks,
+        mode: 'infinite'
+      });
+    } else {
+      try {
+        const response = await geminiResponse(message);
         return res.status(200).json({
-          response: `Infinite Context Processing Results:\n${combinedResponse}`,
-          chunks: chunks,
-          mode: 'infinite'
-        });
-      } else {
-      //   // Default chat mode with length limit
-      //   if (message.length > 500) {
-      //     return res.status(400).json({
-      //       error: 'Message too long for default mode. Use infinite context mode.',
-      //       mode: 'default'
-      //     });
-      //   }
-        return res.status(200).json({
-          // response: `Default chat response to: "${message.substring(0, 50)}..."`,
-          response: `Default chat response to: "${message}"`,
+          response: response,
           mode: 'default'
         });
+      } catch (error) {
+        console.error('Model Error:', error);
+        return res.status(500).json({ 
+          error: 'Model processing error',
+          details: error.message 
+        });
       }
-    } catch (error) {
-      return res.status(500).json({ error: 'Internal server error' });
     }
   } catch (error) {
     console.error('API Error:', error);
