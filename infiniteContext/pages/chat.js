@@ -69,6 +69,7 @@ export default function Chat() {
   const [processingChunks, setProcessingChunks] = useState({});
   const [visibleMessages, setVisibleMessages] = useState({});
   const [user, setUser] = useState(null);
+  const [infiniteMode, setInfiniteMode] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -292,8 +293,8 @@ export default function Chat() {
       }).join('\n\n');
 
       const payload = {
-        message: userMessage.text,
-        mode: isInfiniteMode ? 'infinite' : 'default',
+        message: infiniteMode ? userMessage.text : `${userMessage.text}\n\nContext:\n${combinedText}`,
+        mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
         fullText: combinedText || null,
       };
 
@@ -303,7 +304,7 @@ export default function Chat() {
         body: JSON.stringify(payload),
       });
       
-      if (!isInfiniteMode) {
+      if (!infiniteMode || sourceOrder.length === 0) {
         // Handle normal mode response
         const data = await res.json();
         setMessages(prev => [
@@ -381,13 +382,18 @@ export default function Chat() {
   const FullTextIndicator = () => sourceOrder.length > 0 && (
     <div className="flex flex-col gap-1 px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-600">
       <div className="flex gap-2 items-center flex-wrap">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-green-600 text-white">
+        <button 
+          onClick={() => setInfiniteMode(prev => !prev)}
+          className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
+            infiniteMode ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'
+          }`}
+        >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
-          <span>Infinite Context Enabled</span>
-          <div className="w-2 h-2 rounded-full bg-white" />
-        </div>
+          <span>Infinite Context {infiniteMode ? 'Enabled' : 'Disabled'}</span>
+          <div className={`w-2 h-2 rounded-full ${infiniteMode ? 'bg-white' : 'bg-gray-400'}`} />
+        </button>
         <div className="flex items-center flex-wrap gap-1">
           {sourceOrder.map((sourceId, index) => {
             const [type, id] = sourceId.split('-');
