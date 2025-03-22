@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
+    "@netlify/plugin-nextjs": "^5.10.1",
     "@tailwindcss/typography": "^0.5.16",
     "firebase": "^11.5.0",
     "formidable": "^3.5.2",
