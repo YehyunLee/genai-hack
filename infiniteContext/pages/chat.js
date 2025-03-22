@@ -3,12 +3,20 @@ import Head from 'next/head';
 
 export default function Chat() {
   const [input, setInput] = useState('');
+  const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState([]);
   const textareaRef = useRef(null);
+  const promptRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+  };
+
+  const adjustPromptHeight = () => {
+    const textarea = promptRef.current;
     textarea.style.height = 'auto';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
   };
@@ -21,16 +29,16 @@ export default function Chat() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !prompt.trim()) return;
     const userMessage = { role: 'user', text: input };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
-    
+
     // Call the simple JS backend
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: userMessage.text }),
+      body: JSON.stringify({ message: prompt }),
     });
     const data = await res.json();
     const aiMessage = { role: 'ai', text: data.response };
@@ -83,7 +91,7 @@ export default function Chat() {
           {/* Input area */}
           <div className="border-t border-gray-800 p-4">
             <div className="max-w-3xl mx-auto">
-              <div className="relative">
+              <div className="relative mb-4">
                 <textarea
                   ref={textareaRef}
                   value={input}
@@ -95,6 +103,21 @@ export default function Chat() {
                   rows={1}
                   className="w-full bg-gray-700 text-white rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   placeholder="Send a message..."
+                  style={{ maxHeight: '200px' }}
+                />
+              </div>
+              <div className="relative">
+                <textarea
+                  ref={promptRef}
+                  value={prompt}
+                  onChange={(e) => {
+                    setPrompt(e.target.value);
+                    adjustPromptHeight();
+                  }}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  className="w-full bg-gray-700 text-white rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="Enter prompt for AI..."
                   style={{ maxHeight: '200px' }}
                 />
                 <button
