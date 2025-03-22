@@ -78,6 +78,7 @@ export default function Chat() {
   const [chatId, setChatId] = useState(null); // Store chat ID
   const [chatTitle, setChatTitle] = useState("New Chat"); // Store chat title
   const [infiniteMode, setInfiniteMode] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -596,21 +597,36 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
 
       <div className="flex h-screen">
         {/* Sidebar */}
-
-        <Sidebar userId={user?.uid}
-        onNewChat={() => {
-          setChatTitle("New Chat");
-          setMessages([]);
-          setChatId(null);
-        }}
-        chatId={chatId}
-        setChatId={setChatId} />
+        {isSidebarOpen && (
+          <Sidebar
+            userId={user?.uid}
+            onNewChat={() => {
+              setChatTitle("New Chat");
+              setMessages([]);
+              setChatId(null);
+            }}
+            chatId={chatId}
+            setChatId={setChatId}
+            isSidebarOpen={isSidebarOpen}
+            setIsSidebarOpen={setIsSidebarOpen}
+          />
+        )}
 
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">
-
           {/* Header (Chat Title and the logout button) */}
           <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
+            {/* If it is mobile, then make a logo to see the sidebar to see all the other chat history */}
+            <button
+              className="text-gray-300 hover:text-gray-400"
+              onClick={() => {
+                setIsSidebarOpen(!isSidebarOpen);
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+              </svg>
+            </button>
             <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">{chatTitle}</h1>
             <button
               onClick={() => {
@@ -623,7 +639,6 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
               <LogOut className="h-6 w-6 justify-end" />
             </button>
           </div>
-
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto">
@@ -738,16 +753,16 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                   </button>
                 </div>
                 <div className="flex items-center px-4 py-2">
-          <span className="text-xs text-gray-400 ml-3">
-            Press Enter to send, Shift + Enter for new line
-          </span>
-        </div>
-      </div>
-      {error && (
-        <div className="max-w-3xl mx-auto px-4 py-2 mt-2">
-          <p className="text-red-500 text-sm">{error}</p>
-        </div>
-      )}
+                  <span className="text-xs text-gray-400 ml-3">
+                    Press Enter to send, Shift + Enter for new line
+                  </span>
+                </div>
+              </div>
+              {error && (
+                <div className="max-w-3xl mx-auto px-4 py-2 mt-2">
+                  <p className="text-red-500 text-sm">{error}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
