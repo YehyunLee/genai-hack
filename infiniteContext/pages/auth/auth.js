@@ -3,7 +3,7 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } f
 import { doc, setDoc } from "firebase/firestore";
 
 // Sign Up
-export const signUp = async (email, password, router) => {
+const signUp = async (email, password, router) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
@@ -32,7 +32,7 @@ export const signUp = async (email, password, router) => {
 };
 
 // Sign In
-export const signIn = async (email, password) => {
+const signIn = async (email, password) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return userCredential.user;
@@ -43,7 +43,7 @@ export const signIn = async (email, password) => {
 };
 
 // Sign Out
-export const logout = async () => {
+const logout = async () => {
   try {
     await signOut(auth);
     console.log("User signed out");
@@ -51,3 +51,5 @@ export const logout = async () => {
     console.error("Error signing out:", error.message);
   }
 };
+
+export default { signUp, signIn, logout };
