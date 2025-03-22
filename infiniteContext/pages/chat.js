@@ -3,6 +3,10 @@ import Head from 'next/head';
 import { logout } from "./auth/auth";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import { db } from "../firebaseConfig";
+import { collection, addDoc, doc, setDoc } from "firebase/firestore";
+
+
 import ReactMarkdown from 'react-markdown';
 
 const CodeBlock = ({ children, className }) => {
@@ -69,6 +73,7 @@ export default function Chat() {
   const [processingChunks, setProcessingChunks] = useState({});
   const [visibleMessages, setVisibleMessages] = useState({});
   const [user, setUser] = useState(null);
+  const [chatId, setChatId] = useState(null); // Store chat ID
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -297,6 +302,18 @@ export default function Chat() {
         fullText: combinedText || null,
       };
 
+      let tempChatId = chatId;
+
+      // Create a new chat document if it doesn't exist
+      if (!chatId) {
+        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
+          createdAt: new Date(),
+          messages: []
+        });
+        setChatId(chatDocRef.id);
+        tempChatId = chatDocRef.id;
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -306,14 +323,21 @@ export default function Chat() {
       if (!isInfiniteMode) {
         // Handle normal mode response
         const data = await res.json();
+        const aiMessage = {
+          role: 'ai',
+          text: data.response,
+          mode: 'default'
+        };
         setMessages(prev => [
           ...prev.slice(0, -1),
-          {
-            role: 'ai',
-            text: data.response,
-            mode: 'default'
-          }
+          aiMessage
         ]);
+
+        // Add the AI message to the chat document
+        await setDoc(doc(db, `users/${user.uid}/chats/${tempChatId}`), {
+          messages: [...messages, userMessage, aiMessage]
+        }, { merge: true });
+
         return;
       }
 

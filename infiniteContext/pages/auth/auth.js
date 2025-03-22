@@ -24,7 +24,7 @@ export const signUp = async (email, password, router) => {
     await signInWithEmailAndPassword(auth, email, password);
 
 
-    return userCredential.user;
+    return user;
   } catch (error) {
     console.error("Error signing up:", error.message);
     throw error;
