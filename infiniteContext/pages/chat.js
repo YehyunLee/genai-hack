@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
+import { logout } from "./auth/auth";
+import { auth } from "./auth/firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function Chat() {
   const [input, setInput] = useState('');
@@ -13,6 +16,18 @@ export default function Chat() {
   const [visibleMessages, setVisibleMessages] = useState({});
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!currentUser) {
+        window.location.href = '/auth/login'; // Redirect to login page
+      } else {
+        setUser(currentUser);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -142,6 +157,7 @@ export default function Chat() {
       </Head>
 
       <div className="flex h-screen">
+        
         <div className="hidden md:flex w-64 bg-gray-800 flex-col p-4">
           <button className="flex items-center justify-center gap-2 px-4 py-2 mb-4 w-full rounded border border-white/20 text-white hover:bg-gray-700 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -152,6 +168,32 @@ export default function Chat() {
         </div>
 
         <div className="flex-1 flex flex-col">
+          {/* Header */}
+          <header className="p-4 flex items-center justify-between">
+            <h1 className="text-white text-lg justify-center">Header</h1>
+            {/* Add a login / logout button */}
+            {user ? (
+              <div className="flex items-center gap-2">
+                <span className="text-white">{user.email}</span>
+                <button className="text-white hover:bg-gray-700 rounded px-4 py-2 transition-colors"
+                  onClick={() => {
+                    logout();
+                    setUser(null);
+                  }}>
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button className="text-white hover:bg-gray-700 rounded px-4 py-2 transition-colors"
+                onClick={() => {
+                  window.href = '/auth/login'; // Redirect to login page
+                  // Redirect to login page or perform logout logic
+                }
+              }>
+                Login
+              </button>
+            )}
+          </header>
           <div className="flex-1 overflow-y-auto">
             {messages.map((msg, idx) => (
               <div key={idx} className={`p-8 ${msg.role === 'ai' ? 'bg-gray-800' : msg.role === 'system' ? 'bg-gray-700' : 'bg-gray-900'}`}>
