@@ -1,23 +1,84 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../../firebaseConfig';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit, startAfter } from 'firebase/firestore';
+import { debounce } from 'lodash';
+
+const CHATS_PER_PAGE = 20;
 
 const Sidebar = ({ userId, onNewChat, chatId, setChatId }) => {
   const [chats, setChats] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastDoc, setLastDoc] = useState(null);
 
+  // Debounced update function
+  const updateChats = useCallback(
+    debounce((newChats) => {
+      setChats(newChats);
+    }, 300),
+    []
+  );
+
+  const loadChats = useCallback(async (isInitial = false) => {
+    if (!userId || (loading && !isInitial)) return;
+
+    try {
+      setLoading(true);
+
+      let q = query(
+        collection(db, `users/${userId}/chats`),
+        orderBy('createdAt', 'desc'),
+        limit(CHATS_PER_PAGE)
+      );
+
+      if (!isInitial && lastDoc) {
+        q = query(q, startAfter(lastDoc));
+      }
+
+      // Use a single snapshot listener
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (snapshot.empty && isInitial) {
+          setHasMore(false);
+          return;
+        }
+
+        const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+        setLastDoc(lastVisible);
+
+        const newChats = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        updateChats(isInitial ? newChats : [...chats, ...newChats]);
+        setHasMore(snapshot.docs.length === CHATS_PER_PAGE);
+      }, 
+      (error) => {
+        console.error('Error loading chats:', error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error setting up chat listener:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, lastDoc, chats, loading]);
+
+  // Initial load
   useEffect(() => {
-    if (!userId) return;
+    let unsubscribe;
+    
+    if (userId) {
+      unsubscribe = loadChats(true);
+    }
 
-    const q = query(collection(db, `users/${userId}/chats`), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const chatList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setChats(chatList);
-    });
-
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      updateChats.cancel();
+    };
   }, [userId]);
 
   return (
@@ -36,16 +97,29 @@ const Sidebar = ({ userId, onNewChat, chatId, setChatId }) => {
           <div
             key={chat.id}
             onClick={() => setChatId(chat.id)}
-            className={`p-2 text-white border-b border-gray-700 cursor-pointer ${
+            className={`p-2 text-white border-b border-gray-700 cursor-pointer hover:bg-gray-700/50 transition-colors ${
               chat.id === chatId ? 'bg-gray-700' : ''
             }`}
           >
             {chat.title || 'Untitled Chat'}
           </div>
         ))}
+        {hasMore && !loading && (
+          <button
+            onClick={() => loadChats()}
+            className="w-full p-2 text-gray-400 hover:text-gray-300 text-sm"
+          >
+            Load more chats...
+          </button>
+        )}
+        {loading && (
+          <div className="p-2 text-gray-400 text-sm text-center">
+            Loading...
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-export default Sidebar;
+export default React.memo(Sidebar);

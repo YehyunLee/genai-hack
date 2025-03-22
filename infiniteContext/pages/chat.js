@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Head from 'next/head';
 import { logout } from "../lib/auth";
 import { auth } from "../firebaseConfig";
@@ -9,6 +9,7 @@ import Sidebar from './components/sidebar';
 import { onSnapshot } from "firebase/firestore";
 import ReactMarkdown from 'react-markdown';
 import { LogOut } from "lucide-react";
+import { debounce } from 'lodash';
 
 const CodeBlock = ({ children, className }) => {
   const codeRef = useRef(null);
@@ -264,38 +265,48 @@ export default function Chat() {
     });
   };
 
-  const sendMessage = async () => {
+  const sendMessage = useCallback(async () => {
     if (!input.trim()) return;
     setError(null);
-    const userMessage = { 
-      role: 'user', 
+    
+    const userMessage = {
+      role: 'user',
       text: input,
-      sourceOrder: [...sourceOrder], // Save current sourceOrder with the message
-      infiniteMode: infiniteMode // Add this line
+      sourceOrder: [...sourceOrder],
+      infiniteMode
     };
-    adjustTextareaHeight();
 
     try {
       if (new Blob([input]).size > 10 * 1024 * 1024) {
         throw new Error('Message is too large. Please reduce the size.');
       }
 
-      setMessages(prev => [...prev, userMessage]);
+      // Update local state first
+      const newMessages = [...messages, userMessage];
+      setMessages(newMessages);
       setInput('');
-      
-      // Check if we're in infinite context mode
-      const isInfiniteMode = sourceOrder.length > 0;
-      
-      // Initialize AI message based on mode
-      const initialAiMessage = {
-        role: 'ai',
-        text: sourceOrder.length > 0 ? (infiniteMode ? 'Processing with infinite context...' : 'Processing with limited context...') : '',
-        mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
-        chunks: {},
-        infiniteMode
-      };
-      setMessages(prev => [...prev, initialAiMessage]);
-      
+
+      // Create chat document only if needed
+      if (!chatId) {
+        const chatData = {
+          title: userMessage.text,
+          createdAt: new Date(),
+          messages: newMessages
+        };
+
+        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), chatData);
+        setChatId(chatDocRef.id);
+        setChatTitle(userMessage.text);
+      } else {
+        // Update existing chat with batched write
+        const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
+        await setDoc(chatRef, {
+          messages: newMessages,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
+
+      // Rest of the message processing logic...
       const combinedText = sourceOrder.map(sourceId => {
         const [type, id] = sourceId.split('-');
         return type === 'pdf' ? pdfText[id].content : clipboardText[id].content;
@@ -377,39 +388,50 @@ export default function Chat() {
       setError(err.message);
       console.error('Error:', err);
     }
-  };
+  }, [input, messages, sourceOrder, infiniteMode, chatId, user?.uid]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   useEffect(() => {
-    // chatId
+    if (!chatId || !user) return;
+
+    const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
+    let unsubscribe;
+
+    // Debounce message updates to Firebase
+    const updateMessages = debounce(async (newMessages) => {
+      try {
+        await setDoc(chatRef, {
+          messages: newMessages,
+          updatedAt: new Date()
+        }, { merge: true });
+      } catch (error) {
+        console.error('Error updating messages:', error);
+      }
+    }, 1000); // 1 second debounce
+
+    // Only subscribe if we need to listen for changes
     if (chatId) {
-      const unsubscribe = onSnapshot(doc(db, `users/${user.uid}/chats/${chatId}`), (doc) => {
+      unsubscribe = onSnapshot(chatRef, (doc) => {
         const chatData = doc.data();
-        if (chatData) {
-          setChatTitle(chatData.title || "Untitled Chat");
-          setMessages(chatData.messages || []);
+        if (chatData && chatData.messages) {
+          // Only update if messages are different
+          if (JSON.stringify(messages) !== JSON.stringify(chatData.messages)) {
+            setChatTitle(chatData.title || "Untitled Chat");
+            setMessages(chatData.messages);
+          }
         }
       });
-      return () => unsubscribe();
     }
-  }, [chatId, user]);
-  // useEffect(() => {
-  //   if (fullText) {
-  //     const newMessage = {
-  //       role: 'user',
-  //       text: fullText.content,
 
-  //       sourceOrder: [`${fullText.source}-${fullText.id}`]
-  //     };
-  //     setMessages(prev => [...prev, newMessage]);
-  //     setFullText(null);
-  //     setActiveSource(null);
-  //     setSourceOrder(prev => prev.filter(sourceId => sourceId !== `${fullText.source}-${fullText.id}`));
-  //   }
-  // }, [fullText]);
+    // Cleanup subscription
+    return () => {
+      if (unsubscribe) unsubscribe();
+      updateMessages.cancel();
+    };
+  }, [chatId, user?.uid]); // Only depend on chatId and user.uid
 
   const switchSource = (source) => {
     if (source === 'clipboard' && clipboardText) {
