@@ -43,9 +43,9 @@ const CodeBlock = ({ children, className }) => {
   );
 };
 
-const LoadingMessage = () => (
+const LoadingMessage = ({ infiniteMode }) => (
   <div className="inline-block animate-pulse bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700 rounded px-2 py-1">
-    Processing chunks...
+    {infiniteMode ? 'Processing with infinite context...' : 'Processing with limited context...'}
   </div>
 );
 
@@ -281,9 +281,10 @@ export default function Chat() {
       // Initialize AI message based on mode
       const initialAiMessage = {
         role: 'ai',
-        text: isInfiniteMode ? 'Processing chunks...' : '',
-        mode: isInfiniteMode ? 'infinite' : 'default',
-        chunks: {}
+        text: sourceOrder.length > 0 ? (infiniteMode ? 'Processing with infinite context...' : 'Processing with limited context...') : '',
+        mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
+        chunks: {},
+        infiniteMode
       };
       setMessages(prev => [...prev, initialAiMessage]);
       
@@ -539,8 +540,8 @@ export default function Chat() {
                   <div className="flex-1">
                     {msg.sourceOrder && <MessageAttachmentIndicator sourceOrder={msg.sourceOrder} />}
                     <div className="prose prose-invert max-w-none">
-                      {msg.text === 'Processing chunks...' ? (
-                        <LoadingMessage />
+                      {msg.text.startsWith('Processing') ? (
+                        <LoadingMessage infiniteMode={msg.infiniteMode} />
                       ) : (
                         <ReactMarkdown
                           components={{
