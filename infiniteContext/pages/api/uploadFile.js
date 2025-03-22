@@ -1,7 +1,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
-import { processFile } from './_processors';
+import { processFile } from './_fileProcessors';
 
 export const config = {
   api: {
