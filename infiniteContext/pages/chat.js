@@ -250,182 +250,169 @@ export default function Chat() {
   };
 
   const sendMessage = useCallback(async () => {
-    if (!input.trim()) return;
-    setError(null);
+  if (!input.trim()) return;
+  setError(null);
 
-    const userMessage = {
-      role: 'user',
-      text: input,
-      sourceOrder: [...sourceOrder],
-      infiniteMode
-    };
+  const userMessage = {
+    role: 'user',
+    text: input,
+    sourceOrder: [...sourceOrder],
+    infiniteMode
+  };
 
-    // Initialize AI message with loading state - Fix the condition here
-    const initialAiMessage = {
-      role: 'ai',
-      text: sourceOrder.length > 0 && infiniteMode
-        ? 'Processing with infinite context...'
-        : 'Processing with limited context...',
-      mode: sourceOrder.length > 0 && infiniteMode ? 'infinite' : 'default',
-      status: 'loading',
-      infiniteMode: sourceOrder.length > 0 && infiniteMode
-    };
+  // Initialize AI message with loading state
+  const initialAiMessage = {
+    role: 'ai',
+    text: sourceOrder.length > 0 && infiniteMode
+      ? 'Processing with infinite context...'
+      : 'Processing with limited context...',
+    mode: sourceOrder.length > 0 && infiniteMode ? 'infinite' : 'default',
+    status: 'loading',
+    infiniteMode: sourceOrder.length > 0 && infiniteMode
+  };
 
-    try {
-      if (new Blob([input]).size > 10 * 1024 * 1024) {
-        throw new Error('Message is too large. Please reduce the size.');
-      }
+  try {
+    if (new Blob([input]).size > 10 * 1024 * 1024) {
+      throw new Error('Message is too large. Please reduce the size.');
+    }
 
-      // Update local state with both messages
-      setMessages(prev => [...prev, userMessage, initialAiMessage]);
-      setInput('');
+    // Update local state with both messages
+    setMessages(prev => [...prev, userMessage, initialAiMessage]);
+    setInput('');
 
-      // Check if we're in infinite context mode
-      const isInfiniteMode = sourceOrder.length > 0;
-
-      // Initialize AI message based on mode
-      const initialAiMessage = {
-        role: 'ai',
-        text: isInfiniteMode ? 'Processing chunks...' : '',
-        mode: isInfiniteMode ? 'infinite' : 'default',
-        chunks: {}
-      };
-      setMessages(prev => [...prev, initialAiMessage]);
-
-      const combinedText = sourceOrder
-        .filter(sourceId => !sourceId.startsWith('image'))
-        .map(sourceId => {
-          const [type, id] = sourceId.split('-');
-          return type === 'pdf'
-            ? pdfText[id]?.content
-            : clipboardText[id]?.content;
-        })
+    const combinedText = sourceOrder
+      .filter(sourceId => !sourceId.startsWith('image'))
+      .map(sourceId => {
+        const [type, id] = sourceId.split('-');
+        return type === 'pdf'
+          ? pdfText[id]?.content
+          : clipboardText[id]?.content;
+      })
       .join('\n\n');
 
-      const imagePayloads = sourceOrder
+    const imagePayloads = sourceOrder
       .filter(sourceId => sourceId.startsWith('image'))
       .map(sourceId => {
         const [, id] = sourceId.split('-');
         return image[id];
       });
 
-      const payload = {
-        message: infiniteMode ? userMessage.text : `${userMessage.text}\n\nContext:\n${combinedText}`,
-        mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
-        fullText: combinedText || null,
-        images: imagePayloads.length > 0 ? imagePayloads : null,
+    const payload = {
+      message: infiniteMode ? userMessage.text : `${userMessage.text}\n\nContext:\n${combinedText}`,
+      mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
+      fullText: combinedText || null,
+      images: imagePayloads.length > 0 ? imagePayloads : null,
+    };
+
+    // Only interact with Firestore if user is logged in
+    if (user && chatId) {
+      const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
+      await setDoc(chatRef, {
+        messages: [...messages, userMessage, initialAiMessage],
+        updatedAt: new Date()
+      }, { merge: true });
+    }
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!infiniteMode || sourceOrder.length === 0) {
+      // Handle normal mode response
+      const data = await res.json();
+      const aiMessage = {
+        role: 'ai',
+        text: data.response,
+        mode: 'default',
+        status: 'complete'
       };
 
-      // Only interact with Firestore if user is logged in
+      // Update both local state and Firestore
+      const updatedMessages = [...messages, userMessage, aiMessage];
+      setMessages(updatedMessages);
       if (user && chatId) {
         const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
         await setDoc(chatRef, {
-          messages: [...messages, userMessage, initialAiMessage],
+          messages: updatedMessages,
           updatedAt: new Date()
         }, { merge: true });
       }
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!infiniteMode || sourceOrder.length === 0) {
-        // Handle normal mode response
-        const data = await res.json();
-        const aiMessage = {
-          role: 'ai',
-          text: data.response,
-          mode: 'default',
-          status: 'complete'
-        };
-
-        // Update both local state and Firestore
-        const updatedMessages = [...messages, userMessage, aiMessage];
-        setMessages(updatedMessages);
-        if (user && chatId) {
-          const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
-          await setDoc(chatRef, {
-            messages: updatedMessages,
-            updatedAt: new Date()
-          }, { merge: true });
-        }
-
-        return;
-      }
-
-      // Handle infinite mode response with streaming
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let aiMessage = {
-        role: 'ai',
-        text: 'Processing with infinite context...',
-        mode: 'infinite',
-        status: 'streaming',
-        chunks: {}
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          try {
-            const chunk = JSON.parse(line);
-            switch (chunk.type) {
-              case 'chunk':
-                aiMessage.chunks[chunk.data.chunkNumber] = chunk.data;
-                aiMessage.text = Object.values(aiMessage.chunks)
-                  .sort((a, b) => a.chunkNumber - b.chunkNumber)
-                  .map(c => {
-                    if (c.error) {
-                      return `### Part ${c.chunkNumber}/${c.totalChunks}\n\n⚠️ Error: ${c.error}`;
-                    }
-                    return `### Part ${c.chunkNumber}/${c.totalChunks}\n\n${c.response}`;
-                  })
-                  .join('\n\n---\n\n');
-                aiMessage.status = 'streaming';
-
-                // Update local state
-                setMessages(prev => {
-                  const newMessages = [...prev];
-                  newMessages[newMessages.length - 1] = { ...aiMessage };
-                  return newMessages;
-                });
-                break;
-
-              case 'complete':
-                // Save final version to Firestore
-                if (user && chatId) {
-                  const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
-                  await setDoc(chatRef, {
-                    messages: [...messages, userMessage, aiMessage],
-                    updatedAt: new Date()
-                  }, { merge: true });
-                }
-                break;
-
-              case 'error':
-                setError(chunk.data.message);
-                break;
-            }
-          } catch (e) {
-            console.error('Error parsing chunk:', e);
-          }
-        }
-      }
-    } catch (err) {
-      setError(err.message);
-      console.error('Error:', err);
+      return;
     }
-  }, [input, messages, sourceOrder, infiniteMode, chatId, user, pdfText, clipboardText]);
 
+    // Handle infinite mode response with streaming
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let aiMessage = {
+      role: 'ai',
+      text: 'Processing with infinite context...',
+      mode: 'infinite',
+      status: 'streaming',
+      chunks: {}
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        try {
+          const chunk = JSON.parse(line);
+          switch (chunk.type) {
+            case 'chunk':
+              aiMessage.chunks[chunk.data.chunkNumber] = chunk.data;
+              aiMessage.text = Object.values(aiMessage.chunks)
+                .sort((a, b) => a.chunkNumber - b.chunkNumber)
+                .map(c => {
+                  if (c.error) {
+                    return `### Part ${c.chunkNumber}/${c.totalChunks}\n\n⚠️ Error: ${c.error}`;
+                  }
+                  return `### Part ${c.chunkNumber}/${c.totalChunks}\n\n${c.response}`;
+                })
+                .join('\n\n---\n\n');
+              aiMessage.status = 'streaming';
+
+              // Update local state
+              setMessages(prev => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1] = { ...aiMessage };
+                return newMessages;
+              });
+              break;
+
+            case 'complete':
+              // Save final version to Firestore
+              if (user && chatId) {
+                const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
+                await setDoc(chatRef, {
+                  messages: [...messages, userMessage, aiMessage],
+                  updatedAt: new Date()
+                }, { merge: true });
+              }
+              break;
+
+            case 'error':
+              setError(chunk.data.message);
+              break;
+          }
+        } catch (e) {
+          console.error('Error parsing chunk:', e);
+        }
+      }
+    }
+  } catch (err) {
+    setError(err.message);
+    console.error('Error:', err);
+  }
+}, [input, messages, sourceOrder, infiniteMode, chatId, user, pdfText, clipboardText]);
   useEffect(() => {
     if (!chatId || !user) return;
 
