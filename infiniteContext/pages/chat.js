@@ -7,9 +7,8 @@ import { db } from "../firebaseConfig";
 import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 import Sidebar from './components/sidebar';
 import { onSnapshot } from "firebase/firestore";
-
-
 import ReactMarkdown from 'react-markdown';
+import { LogOut } from "lucide-react";
 
 const CodeBlock = ({ children, className }) => {
   const codeRef = useRef(null);
@@ -75,6 +74,8 @@ export default function Chat() {
   const [processingChunks, setProcessingChunks] = useState({});
   const [visibleMessages, setVisibleMessages] = useState({});
   const [user, setUser] = useState(null);
+  const [chatId, setChatId] = useState(null); // Store chat ID
+  const [chatTitle, setChatTitle] = useState("New Chat"); // Store chat title
   const [infiniteMode, setInfiniteMode] = useState(true);
 
   useEffect(() => {
@@ -316,6 +317,7 @@ export default function Chat() {
         });
         setChatId(chatDocRef.id);
         tempChatId = chatDocRef.id;
+        setChatTitle(userMessage.text);
       }
 
       const res = await fetch('/api/chat', {
@@ -386,6 +388,7 @@ export default function Chat() {
       const unsubscribe = onSnapshot(doc(db, `users/${user.uid}/chats/${chatId}`), (doc) => {
         const chatData = doc.data();
         if (chatData) {
+          setChatTitle(chatData.title || "Untitled Chat");
           setMessages(chatData.messages || []);
         }
       });
@@ -561,6 +564,7 @@ export default function Chat() {
         {/* Sidebar */}
         <Sidebar userId={user?.uid}
         onNewChat={() => {
+          setChatTitle("New Chat");
           setMessages([]);
           setChatId(null);
         }}
@@ -569,6 +573,23 @@ export default function Chat() {
 
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">
+
+          {/* Header (Chat Title and the logout button) */}
+          <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
+            <h1 className="absolute left-1/2 transform -translate-x-1/2 text-xl text-white text-center">{chatTitle}</h1>
+            <button
+              onClick={() => {
+                logout();
+                window.location.href = '/auth/login';
+              }}
+              className="text-red-300 hover:text-red-400 ml-auto px-4 py-2 rounded"
+            >
+              {/* Logout Icon */}
+              <LogOut className="h-6 w-6 justify-end" />
+            </button>
+          </div>
+
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto">
             {messages.map((msg, idx) => (
