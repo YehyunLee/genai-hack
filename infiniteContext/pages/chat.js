@@ -10,6 +10,7 @@ export default function Chat() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [pdfText, setPdfText] = useState({});
+    const [image, setImage] = useState({});
   const [pdfInfo, setPdfInfo] = useState(null);
   const [error, setError] = useState(null);
   const [fullText, setFullText] = useState(null);  // Store loaded text from file or clipboard
@@ -52,7 +53,7 @@ export default function Chat() {
   const handlePaste = async (e) => {
     const pastedText = e.clipboardData.getData('text');
     const wordCount = pastedText.trim().split(/\s+/).length;
-    
+
     if (wordCount > 100) { // Threshold for treating as full text
       e.preventDefault(); // Prevent pasting into textarea
       const newClipboardText = {
@@ -71,8 +72,8 @@ export default function Chat() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || !file.type.includes('pdf')) {
-      alert('Please select a valid PDF file');
+    if (!file) {
+      alert('Please select a valid file');
       return;
     }
 
@@ -86,31 +87,53 @@ export default function Chat() {
         method: 'POST',
         body: formData,
       });
+      console.log("res", res);
 
       const data = await res.json();
 
+      console.log("data", data);
       if (data.success) {
-        const pdfData = {
-          id: Date.now(),
-          content: data.text,
-          wordCount: data.text.trim().split(/\s+/).length,
-          fileInfo: {
-            fileName: data.info.fileName,
-            fileSize: data.info.fileSize,
-            pageCount: data.info.pageCount
-          },
-          timestamp: Date.now()
-        };
-        
-        setPdfText(prev => ({
-          ...prev,
-          [pdfData.id]: pdfData
-        }));
-        setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
-        
+        // Case for PDF files
+        if(data.text) {
+          const pdfData = {
+            id: Date.now(),
+            content: data.text,
+            wordCount: data.text.trim().split(/\s+/).length,
+            fileInfo: {
+              fileName: data.info.fileName,
+              fileSize: data.info.fileSize,
+              pageCount: data.info.pageCount
+            },
+            timestamp: Date.now()
+          };
+
+          setPdfText(prev => ({
+            ...prev,
+            [pdfData.id]: pdfData
+          }));
+          setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
+        }
+        // Case for Image files
+        else if (data.data) {
+          const image = {
+            id: Date.now(),
+            inlineData: {
+              data: data.data,
+              mimeType: data.info?.mimeType || 'image/png'
+            },
+          };
+
+          setImage(prev => ({
+            ...prev,
+            [image.id]: image
+          }));
+
+          setSourceOrder(prev => [...prev, `image-${image.id}`]);
+        }
+
         // Comment out the system messages
         /* setMessages(prev => [
-          ...prev, 
+          ...prev,
 
         setPdfText(data.text);
         setPdfInfo(data.info);
@@ -226,10 +249,10 @@ export default function Chat() {
 
       setMessages(prev => [...prev, userMessage]);
       setInput('');
-      
+
       // Check if we're in infinite context mode
       const isInfiniteMode = sourceOrder.length > 0;
-      
+
       // Initialize AI message based on mode
       const initialAiMessage = {
         role: 'ai',
@@ -238,24 +261,38 @@ export default function Chat() {
         chunks: {}
       };
       setMessages(prev => [...prev, initialAiMessage]);
-      
-      const combinedText = sourceOrder.map(sourceId => {
-        const [type, id] = sourceId.split('-');
-        return type === 'pdf' ? pdfText[id].content : clipboardText[id].content;
-      }).join('\n\n');
+
+      const combinedText = sourceOrder
+        .filter(sourceId => !sourceId.startsWith('image'))
+        .map(sourceId => {
+          const [type, id] = sourceId.split('-');
+          return type === 'pdf'
+            ? pdfText[id]?.content
+            : clipboardText[id]?.content;
+        })
+      .join('\n\n');
+
+      const imagePayloads = sourceOrder
+      .filter(sourceId => sourceId.startsWith('image'))
+      .map(sourceId => {
+        const [, id] = sourceId.split('-');
+        return image[id];
+      });
 
       const payload = {
         message: userMessage.text,
         mode: isInfiniteMode ? 'infinite' : 'default',
         fullText: combinedText || null,
+        images: imagePayloads.length > 0 ? imagePayloads : null,
       };
 
+      console.log("payload", payload);
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      
+
       if (!isInfiniteMode) {
         // Handle normal mode response
         const data = await res.json();
@@ -346,7 +383,7 @@ export default function Chat() {
           {sourceOrder.map((sourceId, index) => {
             const [type, id] = sourceId.split('-');
             const source = type === 'pdf' ? pdfText[id] : clipboardText[id];
-            
+
             return (
               <div
                 key={sourceId}
@@ -470,15 +507,15 @@ export default function Chat() {
                 <div className="flex">
                   {/* File upload button to the left of input */}
                   <div className="flex items-center pl-3">
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept=".pdf" 
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf, image/* "
                       onChange={handleFileUpload}
-                      id="chat-file-upload" 
+                      id="chat-file-upload"
                     />
-                    <label 
-                      htmlFor="chat-file-upload" 
+                    <label
+                      htmlFor="chat-file-upload"
                       className="cursor-pointer p-2 rounded-full hover:bg-gray-600 transition-colors"
                       title="Upload PDF"
                     >
@@ -500,7 +537,7 @@ export default function Chat() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Text input */}
                   <textarea
                     ref={textareaRef}
@@ -513,8 +550,8 @@ export default function Chat() {
                     onKeyDown={handleKeyDown}
                     rows={1}
                     className="flex-1 bg-transparent text-white rounded-t-lg pl-2 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border-b border-gray-600"
-                    placeholder={fullText 
-                      ? "What would you like to do with the loaded text?" 
+                    placeholder={fullText
+                      ? "What would you like to do with the loaded text?"
                       : "Send a message or paste a long text..."
                     }
                     style={{ maxHeight: '200px' }}
