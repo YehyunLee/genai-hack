@@ -33,6 +33,7 @@ export default function Chat() {
     const userMessage = { role: 'user', text: input };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setPrompt('');
 
     const combinedMessage = `${prompt}\n${input}`;
 
