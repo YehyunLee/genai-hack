@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
     // In newer versions of formidable, the file might be in an array
     const file = files.file?.[0] || files.file;
-    
+
     if (!file || !file.filepath) {
       return res.status(400).json({ error: 'No valid file uploaded' });
     }
@@ -45,10 +45,10 @@ export default async function handler(req, res) {
     // Get file type and extension
     const fileType = file.mimetype || 'application/octet-stream';
     const fileExtension = path.extname(file.originalFilename || '').slice(1).toLowerCase();
-    
+
     // Process the file based on its type
     const result = await processFile(file, fileType, fileExtension);
-    
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('File processing error:', error);
