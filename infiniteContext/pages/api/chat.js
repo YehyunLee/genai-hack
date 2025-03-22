@@ -29,6 +29,9 @@ const geminiResponse = async (message) => {
     const result = await model.generateContent(message);
     const response = await result.response;
     return response.text();
+
+    // print full text history for debugging
+    console.log('Full text history:', response.text_history);
   } catch (error) {
     console.error('Gemini API Error:', error);
     throw new Error(`Gemini API error: ${error.message}`);
@@ -85,7 +88,7 @@ export default async function handler(req, res) {
       });
     } else {
       try {
-        const response = await geminiResponse(message);
+        const response = await modelResponse('gemini', message);
         return res.status(200).json({
           response: response,
           mode: 'default'

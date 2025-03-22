@@ -87,23 +87,6 @@ export default function Chat() {
     setError(null);
     const userMessage = { role: 'user', text: input };
     
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        message: userMessage.text,
-        mode: isInfiniteMode ? 'infinite' : 'default',
-        pdfText: pdfText // Send the PDF text to the chat API
-      }),
-    });
-    const data = await res.json();
-    const aiMessage = { 
-      role: 'ai', 
-      text: data.response,
-      mode: data.mode,
-      chunks: data.chunks 
-    };
-    setMessages(prev => [...prev, aiMessage]);
     try {
       // Check message size before sending
       if (new Blob([input]).size > 10 * 1024 * 1024) { // 10MB
@@ -118,7 +101,8 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: userMessage.text,
-          mode: isInfiniteMode ? 'infinite' : 'default'
+          mode: isInfiniteMode ? 'infinite' : 'default',
+          pdfText: pdfText // Send the PDF text to the chat API
         }),
       });
       
