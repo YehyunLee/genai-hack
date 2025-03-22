@@ -281,32 +281,11 @@ export default function Chat() {
         throw new Error('Message is too large. Please reduce the size.');
       }
 
-      // Update local state first
-      const newMessages = [...messages, userMessage];
-      setMessages(newMessages);
+      // Update local state with user message first
+      setMessages(prev => [...prev, userMessage]);
       setInput('');
 
-      // Create chat document only if needed
-      if (!chatId) {
-        const chatData = {
-          title: userMessage.text,
-          createdAt: new Date(),
-          messages: newMessages
-        };
-
-        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), chatData);
-        setChatId(chatDocRef.id);
-        setChatTitle(userMessage.text);
-      } else {
-        // Update existing chat with batched write
-        const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
-        await setDoc(chatRef, {
-          messages: newMessages,
-          updatedAt: new Date()
-        }, { merge: true });
-      }
-
-      // Rest of the message processing logic...
+      // Prepare data for API call
       const combinedText = sourceOrder.map(sourceId => {
         const [type, id] = sourceId.split('-');
         return type === 'pdf' ? pdfText[id].content : clipboardText[id].content;
@@ -318,18 +297,19 @@ export default function Chat() {
         fullText: combinedText || null,
       };
 
-      let tempChatId = chatId;
-
-      // Create a new chat document if it doesn't exist
+      // Create or get chat document
+      let chatRef;
       if (!chatId) {
         const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
           title: userMessage.text,
           createdAt: new Date(),
-          messages: []
+          messages: [userMessage] // Only save user message initially
         });
         setChatId(chatDocRef.id);
-        tempChatId = chatDocRef.id;
         setChatTitle(userMessage.text);
+        chatRef = chatDocRef;
+      } else {
+        chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
       }
 
       const res = await fetch('/api/chat', {
@@ -341,14 +321,21 @@ export default function Chat() {
       if (!infiniteMode || sourceOrder.length === 0) {
         // Handle normal mode response
         const data = await res.json();
-        setMessages(prev => [
-          ...prev.slice(0, -1),
-          {
-            role: 'ai',
-            text: data.response,
-            mode: 'default'
-          }
-        ]);
+        const aiMessage = {
+          role: 'ai',
+          text: data.response,
+          mode: 'default'
+        };
+        
+        // Update local state
+        setMessages(prev => [...prev, aiMessage]);
+        
+        // Save both messages to Firestore
+        await setDoc(chatRef, {
+          messages: [...messages, userMessage, aiMessage],
+          updatedAt: new Date()
+        }, { merge: true });
+        
         return;
       }
 
@@ -356,6 +343,12 @@ export default function Chat() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let aiMessage = {
+        role: 'ai',
+        text: '',
+        mode: 'infinite',
+        chunks: {}
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -370,11 +363,24 @@ export default function Chat() {
             const chunk = JSON.parse(line);
             switch (chunk.type) {
               case 'chunk':
-                updateChunkResponse(chunk.data);
+                aiMessage.chunks[chunk.data.chunkNumber] = chunk.data;
+                aiMessage.text = Object.values(aiMessage.chunks)
+                  .sort((a, b) => a.chunkNumber - b.chunkNumber)
+                  .map(c => c.response)
+                  .join('\n\n---\n\n');
+                
+                // Update local state with current progress
+                setMessages(prev => [...prev.slice(0, -1), { ...aiMessage }]);
                 break;
+              
               case 'complete':
-                // Update final status if needed
+                // Save final version to Firestore
+                await setDoc(chatRef, {
+                  messages: [...messages, userMessage, aiMessage],
+                  updatedAt: new Date()
+                }, { merge: true });
                 break;
+              
               case 'error':
                 setError(chunk.data.message);
                 break;
@@ -388,7 +394,7 @@ export default function Chat() {
       setError(err.message);
       console.error('Error:', err);
     }
-  }, [input, messages, sourceOrder, infiniteMode, chatId, user?.uid]);
+  }, [input, messages, sourceOrder, infiniteMode, chatId, user?.uid, pdfText, clipboardText]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -554,9 +560,10 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
         infiniteMode ? 'bg-green-600/20 text-green-400' : 'bg-blue-600/20 text-blue-400'
       }`}>
         <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={infiniteMode ? "M13 10V3L4 14h7v7l9-11h-7z" : "M9 12l2 2 4-4"} />
+        </svg>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
             d={infiniteMode ? "M13 10V3L4 14h7v7l9-11h-7z" : "M9 12l2 2 4-4"} />
-        </svg>
         <span>{infiniteMode ? 'Infinite' : 'Limited'} Context</span>
       </div>
 
