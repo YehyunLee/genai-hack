@@ -72,13 +72,13 @@ const Sidebar = ({ userId, onNewChat, chatId, setChatId, isSidebarOpen, setIsSid
 
     if (userId) {
       const unsubscribeSnapshot = loadChats(true);
-      if (unsubscribeSnapshot instanceof Function) {
+      if (typeof unsubscribeSnapshot === 'function') {
         unsubscribe = unsubscribeSnapshot;
       }
     }
 
     return () => {
-      if (unsubscribe instanceof Function) {
+      if (typeof unsubscribe === 'function') {
         unsubscribe();
       }
       updateChats.cancel();
