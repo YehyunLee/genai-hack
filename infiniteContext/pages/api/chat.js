@@ -61,20 +61,24 @@ const cohereResponse = async (message) => {
   return response;
 }
 
-// Process text by token count (rough estimate)
+
 const processLongContent = async (text, userRequest, images, video, chunkSize = 500) => {
   const chunks = [];
   let totalChunks;
-  let chunkNumber;
+  let chunkNumber = 0;
 
+  // Calculate total chunks first
+  const textChunksCount = text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0;
+  const imageChunksCount = (images && Array.isArray(images)) ? images.length : 0;
+  const videoChunksCount = (video && video.screenshots) ? video.screenshots.length : 0;
+  totalChunks = textChunksCount + imageChunksCount + videoChunksCount;
+
+  // Process text chunks
   if (text) {
     const words = text.split(/\s+/);
-    totalChunks = Math.ceil(words.length / chunkSize) + ((images && Array.isArray(images)) ? images.length : 0);
-
     for (let i = 0; i < words.length; i += chunkSize) {
+      chunkNumber++;
       const chunkText = words.slice(i, i + chunkSize).join(' ');
-      chunkNumber = Math.floor(i / chunkSize) + 1;
-
       const prompt = systemPromptForEachChunk
         .replace('{{chunk_number}}', chunkNumber)
         .replace('{{total_chunks}}', totalChunks)
@@ -91,17 +95,16 @@ const processLongContent = async (text, userRequest, images, video, chunkSize = 
       });
     }
   }
-  if (images && Array.isArray(images) && images.length > 0) {
-    totalChunks = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0) + images.length;
-    // ...rest of the cod
-    images.forEach((image, index) => {
-      chunkNumber = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0) + index + 1;
 
+  // Process image chunks
+  if (images && Array.isArray(images) && images.length > 0) {
+    images.forEach((image) => {
+      chunkNumber++;
       const prompt = systemPromptForEachChunk
         .replace('{{chunk_number}}', chunkNumber)
         .replace('{{total_chunks}}', totalChunks)
         .replace('{{user_request}}', userRequest)
-        .replace('{{chunk_text}}', ''); // No text for image chunks
+        .replace('{{chunk_text}}', '');
 
       chunks.push({
         prompt,
@@ -112,23 +115,19 @@ const processLongContent = async (text, userRequest, images, video, chunkSize = 
       });
     });
   }
+
+  // Process video chunks
   if (video && video.screenshots) {
-    // Calculate total chunks based on text and video frames (3 chunks for video)
-    totalChunks = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0) + 3;
-
-    // Base chunk number for video frames
-    const baseChunkNumber = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0);
-
-    // Process each screenshot as a separate chunk
     video.screenshots.forEach((screenshot, index) => {
+      chunkNumber++;
       const framePosition = ['beginning', 'middle', 'end'][index];
-      const prompt = `Analyze this frame taken from the ${framePosition} of the video ${video.fileName || ''}. What do you observe in this particular moment?`;
+      const prompt = `${userRequest}\n\nAnalyze this frame taken from the ${framePosition} of the video ${video.fileName || ''}. What do you observe in this particular moment?`;
 
       chunks.push({
         prompt,
         chunkData: screenshot.split(',')[1], // Remove data URL prefix
         chunkDataType: 'image/jpeg',
-        chunkNumber: baseChunkNumber + index + 1,
+        chunkNumber,
         totalChunks
       });
     });
@@ -136,6 +135,7 @@ const processLongContent = async (text, userRequest, images, video, chunkSize = 
 
   return chunks;
 };
+
 
 // Modify processChunks to use streaming response
 const processChunks = async (chunks, res) => {
