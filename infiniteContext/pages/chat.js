@@ -11,6 +11,8 @@ import ReactMarkdown from 'react-markdown';
 import { LogOut } from "lucide-react";
 import { debounce } from 'lodash';
 import MediaTypeIndicators from './components/mediaTypeIndicators';
+import { extractScreenshots } from './functions/extractScreenshots';
+
 
 const CodeBlock = ({ children, className }) => {
   const codeRef = useRef(null);
@@ -29,7 +31,7 @@ const CodeBlock = ({ children, className }) => {
       <pre className={`${className} bg-gray-900 rounded-lg p-4 whitespace-pre-wrap break-all`}>
         <button
           onClick={copyToClipboard}
-          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity
+          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity 
                    bg-gray-800 hover:bg-gray-700 p-2 rounded border border-gray-600"
         >
           {copied ? (
@@ -62,7 +64,8 @@ export default function Chat() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [pdfText, setPdfText] = useState({});
-    const [image, setImage] = useState({});
+  const [image, setImage] = useState({});
+  const [video, setVideo] = useState({});
   const [pdfInfo, setPdfInfo] = useState(null);
   const [error, setError] = useState(null);
   const [fullText, setFullText] = useState(null);  // Store loaded text from file or clipboard
@@ -127,19 +130,60 @@ export default function Chat() {
     }
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-      alert('Please select a valid file');
-      return;
-    }
 
-    setIsUploading(true);
+  // Upload File first to the endpoint to process it then send result back, 
+  // so when user submits message it collectively sends the image data and the prompt.
+  // First, let's define the videoUploader function directly in your component
+// This avoids import issues
 
-    const formData = new FormData();
-    formData.append('file', file);
+const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    alert('Please select a valid file');
+    return;
+  }
 
-    try {
+  setIsUploading(true);
+
+  try {
+    if (file.type.startsWith("video/")) {
+      try {
+        console.log('Processing video file...');
+        
+        const screenshots = await extractScreenshots(file);
+        console.log('Video processing complete, screenshots:', screenshots);
+        
+        // Create a video entry with screenshots
+        const video = {
+          id: Date.now(),
+          screenshots: screenshots,
+          videoInfo: {
+            fileName: file.name,
+            fileSize: `${Math.round(file.size / 1024)} KB`,
+            fileType: file.type || 'video/mp4'
+          },
+          timestamp: Date.now()
+        };
+        console.log(video, "VIDEO");
+        // Update your state with the new video
+        setVideo(prev => ({
+          ...prev,
+          [video.id]: video
+        }));
+        
+        // Add to source order
+        setSourceOrder(prev => [...prev, `video-${video.id}`]);
+        
+        console.log('Video processed successfully');
+      } catch (error) {
+        console.error('Error processing video:', error);
+        alert('Error processing video: ' + error.message);
+      }
+    } else {
+      // Handle non-video files with your existing code
+      const formData = new FormData();
+      formData.append('file', file);
+      
       const res = await fetch('/api/uploadFile', {
         method: 'POST',
         body: formData,
@@ -186,42 +230,41 @@ export default function Chat() {
 
           setSourceOrder(prev => [...prev, `image-${image.id}`]);
         }
-
-        // Comment out the system messages
-        /* setMessages(prev => [
-          ...prev,
-
-        setPdfText(data.text);
-        setPdfInfo(data.info);
-
-        setUploadedFile({
-          name: data.info.fileName,
-          size: data.info.fileSize,
-          pageCount: data.info.pageCount
-        });
-
-        setMessages(prev => [
-          ...prev,
-
-          {
-            role: 'system',
-            text: `File uploaded: ${data.info.fileName} (${data.info.fileSize}, ${data.info.pageCount} pages)`
-          },
-          {
-            role: 'system',
-            text: `Text extracted from PDF:\n\n${data.text}`
-          }
-        ]); */
-        adjustTextareaHeight();
       } else {
         alert('Failed to upload file: ' + data.error);
       }
-    } catch (error) {
-      alert('Error uploading file: ' + error.message);
-    } finally {
-      setIsUploading(false);
     }
-  };
+    
+    // Adjust textarea height if needed
+    if (typeof adjustTextareaHeight === 'function') {
+      adjustTextareaHeight();
+    }
+    
+  } catch (error) {
+    console.error('Error in file upload:', error);
+    alert('Error uploading file: ' + error.message);
+  } finally {
+    setIsUploading(false);
+  }
+};
+
+
+// Helper function to convert data URL to Blob
+const dataURLtoBlob = (dataURL) => {
+  const parts = dataURL.split(';base64,');
+  const contentType = parts[0].split(':')[1];
+  const raw = window.atob(parts[1]);
+  const rawLength = raw.length;
+  const uInt8Array = new Uint8Array(rawLength);
+  
+  for (let i = 0; i < rawLength; ++i) {
+    uInt8Array[i] = raw.charCodeAt(i);
+  }
+  
+  return new Blob([uInt8Array], { type: contentType });
+};
+
+
 
   useEffect(() => {
     if (activeSource) {
@@ -305,67 +348,81 @@ export default function Chat() {
         return image[id];
       });
 
-    const payload = {
-      message: infiniteMode ? userMessage.text : `${userMessage.text}\n\nContext:\n${combinedText}`,
-      mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
-      fullText: combinedText || null,
-      images: imagePayloads.length > 0 ? imagePayloads : null,
-    };
+      // Gather videos
+      const videoPayloads = sourceOrder
+        .filter(sourceId => sourceId.startsWith('video'))
+        .map(sourceId => {
+          const [, id] = sourceId.split('-');
+          const videoData = video[id];
+          return {
+            screenshots: videoData.screenshots,
+            fileName: videoData.videoInfo.fileName,
+            fileType: videoData.videoInfo.fileType
+          };
+        })[0]; // Take first video only
 
-    let tempChatId = chatId;
-    if (user && !tempChatId) {
-      const chatData = {
-        title: userMessage.text,
-        createdAt: new Date(),
-        messages: [],
+      // Construct payload
+      const payload = {
+        message: infiniteMode ? userMessage.text : `${userMessage.text}\n\nContext:\n${combinedText}`,
+        mode: infiniteMode && sourceOrder.length > 0 ? 'infinite' : 'default',
+        fullText: combinedText || null,
+        images: imagePayloads.length > 0 ? imagePayloads : null,
+        video: videoPayloads || null // This ensures we send null if no video
       };
 
-      const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), chatData);
-      setChatId(chatDocRef.id);
-      setChatTitle(userMessage.text);
-      tempChatId = chatDocRef.id;
-    }
+      console.log("payload", payload.mode);
 
-    // Only interact with Firestore if user is logged in
-    if (user && tempChatId) {
-      const chatRef = doc(db, `users/${user.uid}/chats/${tempChatId}`);
-      await setDoc(chatRef, {
-        messages: [...messages, userMessage, initialAiMessage],
-        updatedAt: new Date()
-      }, { merge: true });
-    }
+      console.log(payload.video, "PAYLOAD VIDEO");
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
 
-    if (!infiniteMode || sourceOrder.length === 0) {
-      // Handle normal mode response
-      const data = await res.json();
-      const aiMessage = {
-        role: 'ai',
-        text: data.response,
-        mode: 'default',
-        status: 'complete'
-      };
+        
+      let tempChatId = chatId;
+      if (user && !tempChatId) {
+        const chatData = {
+          title: userMessage.text,
+          createdAt: new Date(),
+          messages: [],
+        };
 
-      // Update both local state and Firestore
-      const updatedMessages = [...messages, userMessage, aiMessage];
-      setMessages(updatedMessages);
-      if (user && tempChatId) {
-        const chatRef = doc(db, `users/${user.uid}/chats/${tempChatId}`);
-        await setDoc(chatRef, {
-          messages: updatedMessages,
-          updatedAt: new Date()
-        }, { merge: true });
+        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), chatData);
+        setChatId(chatDocRef.id);
+        setChatTitle(userMessage.text);
+        tempChatId = chatDocRef.id;
       }
 
-      return;
-    }
 
-    // Handle infinite mode response with streaming
+
+      if (!infiniteMode || sourceOrder.length === 0) {
+        // Handle normal mode response
+        const data = await res.json();
+        const aiMessage = {
+          role: 'ai',
+          text: data.response,
+          mode: 'default',
+          status: 'complete'
+        };
+  
+        // Update both local state and Firestore
+        const updatedMessages = [...messages, userMessage, aiMessage];
+        setMessages(updatedMessages);
+
+        if (user && tempChatId) {
+          const chatRef = doc(db, `users/${user.uid}/chats/${tempChatId}`);
+          await setDoc(chatRef, {
+            messages: updatedMessages,
+            updatedAt: new Date()
+          }, { merge: true });
+        }
+  
+        return;
+      }
+
+      // Handle infinite mode response with streaming
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -430,11 +487,16 @@ export default function Chat() {
         }
       }
     }
+  
+    adjustTextareaHeight();
   } catch (err) {
     setError(err.message);
     console.error('Error:', err);
   }
-}, [input, messages, sourceOrder, infiniteMode, chatId, user, pdfText, clipboardText]);
+  adjustTextareaHeight();
+}, [input, messages, sourceOrder, infiniteMode, chatId, user, pdfText, clipboardText, video]);
+
+
   useEffect(() => {
     if (!chatId || !user) return;
 
@@ -544,7 +606,7 @@ export default function Chat() {
                 ) : (
                   <>
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                     <span className="text-sm text-white">Clipboard Text</span>
                   </>
@@ -777,7 +839,7 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                     <input
                       type="file"
                       className="hidden"
-                      accept=".pdf, image/* "
+                      accept=".pdf, image/*, video/*"
                       onChange={handleFileUpload}
                       id="chat-file-upload"
                     />

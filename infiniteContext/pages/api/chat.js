@@ -50,9 +50,6 @@ const geminiResponse = async (message, imageChunk, imageChunkType) => {
     const result = await model.generateContent(message);
     const response = await result.response;
     return response.text();
-
-    // print full text history for debugging
-    console.log('Full text history:', response.text_history);
   } catch (error) {
     console.error('Gemini API Error:', error);
     throw new Error(`Gemini API error: ${error.message}`);
@@ -64,14 +61,15 @@ const cohereResponse = async (message) => {
   return response;
 }
 
-const processLongContent = async (text, images, userRequest, chunkSize = 500) => {
+// Process text by token count (rough estimate)
+const processLongContent = async (text, userRequest, images, video, chunkSize = 500) => {
   const chunks = [];
   let totalChunks;
   let chunkNumber;
 
   if (text) {
     const words = text.split(/\s+/);
-    totalChunks = Math.ceil(words.length / chunkSize) + (images ? images.length : 0);
+    totalChunks = Math.ceil(words.length / chunkSize) + ((images && Array.isArray(images)) ? images.length : 0);
 
     for (let i = 0; i < words.length; i += chunkSize) {
       const chunkText = words.slice(i, i + chunkSize).join(' ');
@@ -93,9 +91,9 @@ const processLongContent = async (text, images, userRequest, chunkSize = 500) =>
       });
     }
   }
-
-  if (images) {
+  if (images && Array.isArray(images) && images.length > 0) {
     totalChunks = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0) + images.length;
+    // ...rest of the cod
     images.forEach((image, index) => {
       chunkNumber = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0) + index + 1;
 
@@ -114,6 +112,27 @@ const processLongContent = async (text, images, userRequest, chunkSize = 500) =>
       });
     });
   }
+  if (video && video.screenshots) {
+    // Calculate total chunks based on text and video frames (3 chunks for video)
+    totalChunks = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0) + 3;
+
+    // Base chunk number for video frames
+    const baseChunkNumber = (text ? Math.ceil(text.split(/\s+/).length / chunkSize) : 0);
+
+    // Process each screenshot as a separate chunk
+    video.screenshots.forEach((screenshot, index) => {
+      const framePosition = ['beginning', 'middle', 'end'][index];
+      const prompt = `Analyze this frame taken from the ${framePosition} of the video ${video.fileName || ''}. What do you observe in this particular moment?`;
+
+      chunks.push({
+        prompt,
+        chunkData: screenshot.split(',')[1], // Remove data URL prefix
+        chunkDataType: 'image/jpeg',
+        chunkNumber: baseChunkNumber + index + 1,
+        totalChunks
+      });
+    });
+  }
 
   return chunks;
 };
@@ -127,7 +146,8 @@ const processChunks = async (chunks, res) => {
   // Process all chunks in parallel
   const chunkPromises = chunks.map(async chunk => {
     try {
-      const response = await modelResponse('gemini', chunk.prompt);
+      // In processChunks function, update this line:
+      const response = await modelResponse('gemini', chunk.prompt, chunk.chunkData, chunk.chunkDataType);
       
       // Escape any characters that could break JSON
       const safeResponse = response.replace(/\\/g, '\\\\')
@@ -223,19 +243,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, mode, fullText, images } = req.body;
-
+    const { message, mode, fullText, images, video} = req.body;
+    
     if (mode === 'infinite') {
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'Transfer-Encoding': 'chunked',
       });
 
-      const chunks = await processLongContent(fullText, images, message);
-
+      console.log(video, 'video');  // empty
+      const chunks = await processLongContent(fullText, message, images, video);
+      console.log(chunks, 'chunks'); 
       await processChunks(chunks, res);
 
       res.end();
+      
     } else {
       const response = await modelResponse('gemini', message, images);
       return res.status(200).json({
