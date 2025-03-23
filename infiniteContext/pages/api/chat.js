@@ -89,68 +89,91 @@ const processChunks = async (chunks, res) => {
   const chunkPromises = chunks.map(async chunk => {
     try {
       const response = await modelResponse('gemini', chunk.prompt);
+      
+      // Escape any characters that could break JSON
+      const safeResponse = response.replace(/\\/g, '\\\\')
+                                  .replace(/"/g, '\\"')
+                                  .replace(/\n/g, '\\n')
+                                  .replace(/\r/g, '\\r')
+                                  .replace(/\t/g, '\\t')
+                                  .replace(/\f/g, '\\f');
+
       const chunkResult = {
-        ...chunk,
-        response,
+        chunkNumber: chunk.chunkNumber,
+        totalChunks: chunk.totalChunks,
+        response: safeResponse,
         error: null,
         status: 'complete'
       };
 
-      // Stream result immediately
-      const data = encoder.encode(JSON.stringify({
+      // Ensure valid JSON by stringifying the entire chunk object
+      const chunkData = JSON.stringify({
         type: 'chunk',
         data: chunkResult
-      }) + '\n');
+      }) + '\n';
       
-      res.write(data);
-      await res.flush();
+      res.write(encoder.encode(chunkData));
+      await res.flush?.();
       
       return chunkResult;
     } catch (error) {
       errorCount++;
       console.error(`Error processing chunk ${chunk.chunkNumber}:`, error);
       
+      const errorData = JSON.stringify({
+        type: 'chunk',
+        data: {
+          chunkNumber: chunk.chunkNumber,
+          totalChunks: chunk.totalChunks,
+          response: '',
+          error: error.message.replace(/"/g, '\\"'),
+          status: 'error'
+        }
+      }) + '\n';
+      
+      res.write(encoder.encode(errorData));
+      await res.flush?.();
+
       // Only throw if it's a rate limit error
       if (error.message.toLowerCase().includes('429') || 
           error.message.toLowerCase().includes('too many requests')) {
         throw error;
       }
       
-      return {
-        ...chunk,
-        response: `Error processing chunk ${chunk.chunkNumber}: ${error.message}`,
-        error: error.message,
-        status: 'error'
-      };
+      return null;
     }
   });
 
   try {
     const results = await Promise.allSettled(chunkPromises);
     
-    // Send final status
-    res.write(encoder.encode(JSON.stringify({
+    // Send final status with proper JSON encoding
+    const completeData = JSON.stringify({
       type: 'complete',
       data: {
         totalProcessed: results.length,
         errorCount
       }
-    }) + '\n'));
+    }) + '\n';
+    
+    res.write(encoder.encode(completeData));
     
     return {
-      results: results.map(r => r.status === 'fulfilled' ? r.value : r.reason),
+      results: results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean),
       errorCount,
       totalCount: chunks.length
     };
   } catch (error) {
-    // If we hit rate limits, return what we have so far
-    res.write(encoder.encode(JSON.stringify({
+    // Send error with proper JSON encoding
+    const errorData = JSON.stringify({
       type: 'error',
       data: {
         message: 'Rate limit reached',
-        error: error.message
+        error: error.message.replace(/"/g, '\\"')
       }
-    }) + '\n'));
+    }) + '\n';
+    
+    res.write(encoder.encode(errorData));
     throw error;
   }
 };
