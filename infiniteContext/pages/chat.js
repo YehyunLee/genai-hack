@@ -565,12 +565,20 @@ const dataURLtoBlob = (dataURL) => {
   const FullTextIndicator = () => sourceOrder.length > 0 && (
   <div className="flex flex-col gap-1 px-3 py-2 bg-gray-800 rounded-t-lg border-b border-gray-600">
     <div className="flex gap-2 items-center flex-wrap">
-      <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-green-600 text-white">
+      <div 
+        className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+          infiniteMode 
+            ? 'bg-green-600 text-white hover:bg-green-700' 
+            : 'bg-gray-600 text-gray-300 hover:bg-gray-700'
+        } cursor-pointer transition-colors`}
+        onClick={() => setInfiniteMode(prev => !prev)}
+        title={`Click to ${infiniteMode ? 'disable' : 'enable'} infinite context`}
+      >
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
-        <span>Infinite Context</span>
-        <div className="w-2 h-2 rounded-full bg-white" />
+        <span>Infinite Context {infiniteMode ? 'ON' : 'OFF'}</span>
+        <div className={`w-2 h-2 rounded-full ${infiniteMode ? 'bg-white' : 'bg-gray-400'}`} />
       </div>
       <div className="flex items-center flex-wrap gap-1">
         {sourceOrder.map((sourceId, index) => {
@@ -699,7 +707,7 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                   <>
                     <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                     <span>Clipboard Text</span>
                   </>
