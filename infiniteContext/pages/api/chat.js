@@ -142,20 +142,16 @@ const processChunks = async (chunks, res) => {
   const encoder = new TextEncoder();
   const completedChunks = {};
   let errorCount = 0;
+  let allResponses = [];
 
-  // Process all chunks in parallel
   const chunkPromises = chunks.map(async chunk => {
     try {
-      // In processChunks function, update this line:
       const response = await modelResponse('gemini', chunk.prompt, chunk.chunkData, chunk.chunkDataType);
+      allResponses.push(response);
       
-      // Escape any characters that could break JSON
+      // Only escape necessary characters, don't escape newlines
       const safeResponse = response.replace(/\\/g, '\\\\')
-                                  .replace(/"/g, '\\"')
-                                  .replace(/\n/g, '\\n')
-                                  .replace(/\r/g, '\\r')
-                                  .replace(/\t/g, '\\t')
-                                  .replace(/\f/g, '\\f');
+                                 .replace(/"/g, '\\"');
 
       const chunkResult = {
         chunkNumber: chunk.chunkNumber,
@@ -165,7 +161,6 @@ const processChunks = async (chunks, res) => {
         status: 'complete'
       };
 
-      // Ensure valid JSON by stringifying the entire chunk object
       const chunkData = JSON.stringify({
         type: 'chunk',
         data: chunkResult
