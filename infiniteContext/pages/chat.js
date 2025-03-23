@@ -186,6 +186,61 @@ const CodeBlock = ({ children, className }) => {
   );
 };
 
+const EbookView = ({ content }) => {
+  const [currentPage, setCurrentPage] = useState(0);
+  const pages = useMemo(() => {
+    return content.split(/(?=### Part \d+\/\d+)/).filter(Boolean);
+  }, [content]);
+
+  const handlePrevPage = () => {
+    setCurrentPage(prev => Math.max(0, prev - 1));
+  };
+
+  const handleNextPage = () => {
+    setCurrentPage(prev => Math.min(pages.length - 1, prev + 1));
+  };
+
+  return (
+    <div className="relative min-h-[400px] bg-gray-800 rounded-lg p-6 border border-gray-700">
+      <div className="absolute top-4 right-4 text-gray-400">
+        Page {currentPage + 1} of {pages.length}
+      </div>
+      
+      <div className="prose prose-invert max-w-none min-h-[300px] mt-8">
+        <ReactMarkdown
+          components={{
+            code: ({ node, inline, className, children, ...props }) => {
+              if (inline) {
+                return <code className="bg-gray-700 rounded px-1 py-0.5" {...props}>{children}</code>;
+              }
+              return <CodeBlock className={className}>{children}</CodeBlock>;
+            }
+          }}
+        >
+          {pages[currentPage] || ''}
+        </ReactMarkdown>
+      </div>
+
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
+        <button
+          onClick={handlePrevPage}
+          disabled={currentPage === 0}
+          className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          ← Previous
+        </button>
+        <button
+          onClick={handleNextPage}
+          disabled={currentPage === pages.length - 1}
+          className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const LoadingMessage = ({ infiniteMode }) => (
   <div className="inline-block animate-pulse bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700 rounded px-2 py-1">
     {infiniteMode ? 'Processing with infinite context...' : 'Processing with limited context...'}
@@ -218,6 +273,7 @@ export default function Chat() {
   const [chatTitle, setChatTitle] = useState("New Chat"); // Store chat title
   const [infiniteMode, setInfiniteMode] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isEbookMode, setIsEbookMode] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -979,6 +1035,18 @@ const handleExport = async () => {
                   <span className="hidden md:inline">Export</span>
                 </button>
               )}
+              {messages.some(msg => msg.role === 'ai' && msg.text.includes('### Part')) && (
+                <button
+                  onClick={() => setIsEbookMode(!isEbookMode)}
+                  className="text-gray-300 hover:text-gray-400 px-2 md:px-4 py-2 rounded flex items-center gap-2"
+                  title="Toggle eBook Mode"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <span className="hidden md:inline">{isEbookMode ? 'Normal View' : 'eBook Mode'}</span>
+                </button>
+              )}
               {user ? (
                 <button
                   onClick={() => {
@@ -1030,6 +1098,8 @@ const handleExport = async () => {
                       <div className="prose prose-invert max-w-none">
                         {msg.text && msg.text.startsWith('Processing') ? (
                           <LoadingMessage infiniteMode={msg.infiniteMode} />
+                        ) : msg.role === 'ai' && msg.text.includes('### Part') && isEbookMode ? (
+                          <EbookView content={msg.text} />
                         ) : (
                           <ReactMarkdown
                             components={{
