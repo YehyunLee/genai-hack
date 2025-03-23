@@ -16,59 +16,68 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use system temp directory
     const tempDir = os.tmpdir();
-
     const form = formidable({
       uploadDir: tempDir,
       keepExtensions: true,
-      maxFileSize: 10 * 1024 * 1024, // 10MB limit
+      maxFileSize: 50 * 1024 * 1024, // Increased to 50MB
+      filter: function ({ mimetype }) {
+        return mimetype && mimetype.includes('pdf');
+      },
     });
 
-    // Parse the form
+    // Parse the form with error handling
     const [fields, files] = await new Promise((resolve, reject) => {
       form.parse(req, (err, fields, files) => {
-        if (err) return reject(err);
+        if (err) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            reject(new Error('File is too large (max 50MB)'));
+          } else {
+            reject(err);
+          }
+          return;
+        }
         resolve([fields, files]);
       });
     });
 
-    // In newer versions of formidable, the file might be in an array
     const file = files.file?.[0] || files.file;
     
     if (!file || !file.filepath) {
-      return res.status(400).json({ error: 'No valid file uploaded' });
+      throw new Error('No valid PDF file uploaded');
     }
 
     try {
-      // Read the PDF file
       const dataBuffer = fs.readFileSync(file.filepath);
       
-      // Extract text from PDF
-      const pdfData = await pdfParse(dataBuffer);
-      const extractedText = pdfData.text;
-      
-      // Get additional PDF info
-      const pdfInfo = {
-        pageCount: pdfData.numpages,
-        fileName: file.originalFilename || 'uploaded-file.pdf',
-        fileSize: (file.size / 1024).toFixed(2) + ' KB'
-      };
+      // Validate PDF before parsing
+      if (!dataBuffer || dataBuffer.length === 0) {
+        throw new Error('Empty or invalid PDF file');
+      }
 
-      // Send response
+      const pdfData = await pdfParse(dataBuffer);
+      
+      // Clean up temp file immediately after processing
+      fs.unlinkSync(file.filepath);
+      
       res.status(200).json({
         success: true,
-        text: extractedText,
-        info: pdfInfo
+        text: pdfData.text,
+        info: {
+          pageCount: pdfData.numpages,
+          fileName: file.originalFilename || 'uploaded-file.pdf',
+          fileSize: (file.size / 1024).toFixed(2) + ' KB'
+        }
       });
-    } finally {
-      // Always clean up the temp file
+    } catch (pdfError) {
+      // Clean up temp file in case of PDF processing error
       if (file.filepath && fs.existsSync(file.filepath)) {
         fs.unlinkSync(file.filepath);
       }
+      throw new Error(`PDF processing error: ${pdfError.message}`);
     }
   } catch (error) {
-    console.error('PDF processing error:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message });
   }
 }

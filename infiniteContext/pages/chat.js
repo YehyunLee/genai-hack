@@ -121,12 +121,21 @@ export default function Chat() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || !file.type.includes('pdf')) {
-      alert('Please select a valid PDF file');
+    if (!file) return;
+
+    // Validate file type and size
+    if (!file.type.includes('pdf')) {
+      setError('Please upload a PDF file');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      setError('File size must be less than 50MB');
       return;
     }
 
     setIsUploading(true);
+    setError(null);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -137,8 +146,12 @@ export default function Chat() {
         body: formData,
       });
 
-      const data = await res.json();
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to upload file');
+      }
 
+      const data = await res.json();
       if (data.success) {
         const pdfData = {
           id: Date.now(),
@@ -157,38 +170,11 @@ export default function Chat() {
           [pdfData.id]: pdfData
         }));
         setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
-        
-        // Comment out the system messages
-        /* setMessages(prev => [
-          ...prev, 
-
-        setPdfText(data.text);
-        setPdfInfo(data.info);
-
-        setUploadedFile({
-          name: data.info.fileName,
-          size: data.info.fileSize,
-          pageCount: data.info.pageCount
-        });
-
-        setMessages(prev => [
-          ...prev,
-
-          {
-            role: 'system',
-            text: `File uploaded: ${data.info.fileName} (${data.info.fileSize}, ${data.info.pageCount} pages)`
-          },
-          {
-            role: 'system',
-            text: `Text extracted from PDF:\n\n${data.text}`
-          }
-        ]); */
-        adjustTextareaHeight();
-      } else {
-        alert('Failed to upload file: ' + data.error);
+        setError(null);
       }
     } catch (error) {
-      alert('Error uploading file: ' + error.message);
+      setError(error.message || 'Error uploading file');
+      console.error('Upload error:', error);
     } finally {
       setIsUploading(false);
     }
@@ -640,6 +626,9 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
           {/* Header (Chat Title and the logout button) */}
           <div className="relative flex items-center justify-between w-full px-4 py-2 border-b border-gray-800">
             <div className="absolute left-1/2 transform -translate-x-1/2 flex flex-col items-center">
+            <div className="flex items-center gap-2">
+              <img src="/logo.png" alt="Logo" className="h-14 w-14" />
+            </div>
               <h1 className="text-lg md:text-xl text-white text-center truncate max-w-[200px] md:max-w-[400px]">
                 {user ? chatTitle : "Infinite Context"}
               </h1>
