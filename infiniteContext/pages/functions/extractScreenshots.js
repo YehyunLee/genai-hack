@@ -1,4 +1,4 @@
-export async function extractScreenshots(file) {
+export default async function extractScreenshots(file) {
     return new Promise((resolve, reject) => {
       // Create video element and canvas for processing
       const video = document.createElement('video');
