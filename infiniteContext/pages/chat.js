@@ -3,6 +3,8 @@ import Head from 'next/head';
 import { logout } from "./auth/auth";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import { extractScreenshots } from './functions/extractScreenshots';
+
 
 export default function Chat() {
   const [input, setInput] = useState('');
@@ -26,6 +28,7 @@ export default function Chat() {
   const [processingChunks, setProcessingChunks] = useState({});
   const [visibleMessages, setVisibleMessages] = useState({});
   const [user, setUser] = useState(null);
+  const [testShots, setTestShots] = useState(null)
 
 
 
@@ -76,19 +79,60 @@ export default function Chat() {
 
   // Upload File first to the endpoint to process it then send result back, 
   // so when user submits message it collectively sends the image data and the prompt.
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-      alert('Please select a valid file');
-      return;
-    }
+  // First, let's define the videoUploader function directly in your component
+// This avoids import issues
 
-    setIsUploading(true);
+const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    alert('Please select a valid file');
+    return;
+  }
 
-    const formData = new FormData();
-    formData.append('file', file);
+  setIsUploading(true);
 
-    try {
+  try {
+    if (file.type.startsWith("video/")) {
+      // Process video files using the inline processVideo function
+      try {
+        console.log('Processing video file...');
+        
+        // Call the processVideo function to get screenshots
+        const screenshots = await extractScreenshots(file);
+        console.log('Video processing complete, screenshots:', screenshots);
+        setTestShots(screenshots);
+        
+        // Create a video entry with screenshots
+        const video = {
+          id: Date.now(),
+          screenshots: screenshots,
+          videoInfo: {
+            fileName: file.name,
+            fileSize: `${Math.round(file.size / 1024)} KB`,
+            fileType: file.type || 'video/mp4'
+          },
+          timestamp: Date.now()
+        };
+        
+        // Update your state with the new video
+        setVideo(prev => ({
+          ...prev,
+          [video.id]: video
+        }));
+        
+        // Add to source order
+        setSourceOrder(prev => [...prev, `video-${video.id}`]);
+        
+        console.log('Video processed successfully');
+      } catch (error) {
+        console.error('Error processing video:', error);
+        alert('Error processing video: ' + error.message);
+      }
+    } else {
+      // Handle non-video files with your existing code
+      const formData = new FormData();
+      formData.append('file', file);
+      
       const res = await fetch('/api/uploadFile', {
         method: 'POST',
         body: formData,
@@ -136,61 +180,41 @@ export default function Chat() {
 
           setSourceOrder(prev => [...prev, `image-${image.id}`]);
         }
-        // Video files
-        else if (data.video) {
-          const video = {
-            id: Date.now(),
-            base64Data: data.video, // Base64-encoded video data
-            videoInfo: {
-              fileName: data.info?.fileName || 'uploaded-video',
-              fileSize: data.info?.fileSize || 'Unknown size',
-              duration: data.info?.duration || 'Unknown duration',
-              mimeType: data.info?.mimeType || 'video/mp4'
-            }
-          };
-        
-          setVideo(prev => ({
-            ...prev,
-            [video.id]: video
-          }));
-          setSourceOrder(prev => [...prev, `video-${video.id}`]);
-        }
-
-        // Comment out the system messages
-        /* setMessages(prev => [
-          ...prev,
-
-        setPdfText(data.text);
-        setPdfInfo(data.info);
-
-        setUploadedFile({
-          name: data.info.fileName,
-          size: data.info.fileSize,
-          pageCount: data.info.pageCount
-        });
-
-        setMessages(prev => [
-          ...prev,
-
-          {
-            role: 'system',
-            text: `File uploaded: ${data.info.fileName} (${data.info.fileSize}, ${data.info.pageCount} pages)`
-          },
-          {
-            role: 'system',
-            text: `Text extracted from PDF:\n\n${data.text}`
-          }
-        ]); */
-        adjustTextareaHeight();
       } else {
         alert('Failed to upload file: ' + data.error);
       }
-    } catch (error) {
-      alert('Error uploading file: ' + error.message);
-    } finally {
-      setIsUploading(false);
     }
-  };
+    
+    // Adjust textarea height if needed
+    if (typeof adjustTextareaHeight === 'function') {
+      adjustTextareaHeight();
+    }
+    
+  } catch (error) {
+    console.error('Error in file upload:', error);
+    alert('Error uploading file: ' + error.message);
+  } finally {
+    setIsUploading(false);
+  }
+};
+
+
+// Helper function to convert data URL to Blob
+const dataURLtoBlob = (dataURL) => {
+  const parts = dataURL.split(';base64,');
+  const contentType = parts[0].split(':')[1];
+  const raw = window.atob(parts[1]);
+  const rawLength = raw.length;
+  const uInt8Array = new Uint8Array(rawLength);
+  
+  for (let i = 0; i < rawLength; ++i) {
+    uInt8Array[i] = raw.charCodeAt(i);
+  }
+  
+  return new Blob([uInt8Array], { type: contentType });
+};
+
+
 
   useEffect(() => {
     if (activeSource) {
@@ -320,7 +344,7 @@ export default function Chat() {
         mode: isInfiniteMode ? 'infinite' : 'default',
         fullText: combinedText || null,
         images: imagePayloads.length > 0 ? imagePayloads : null,
-        videos: videoPayloads.length > 0 ? videoPayloads : null, 
+        video: videoPayloads.length > 0 ? videoPayloads : null, 
       };
 
       console.log("payload", payload);
@@ -428,8 +452,10 @@ export default function Chat() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-2-4H7a2 2 0 00-2 2v4a2 2 0 002 2h6a2 2 0 002-2v-4a2 2 0 00-2-2z" />
                       </svg>
                       <span className="text-sm text-white">
-                        {source?.fileInfo?.fileName || 'Video'}
+                        {source?.fileInfo?.fileName || `Video`}
+                        
                       </span>
+                      
                     </>
                   ) : (
                     <>

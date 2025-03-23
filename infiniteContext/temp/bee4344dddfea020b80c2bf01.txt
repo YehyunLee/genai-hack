@@ -1,0 +1,84 @@
+Christopher Jeong
+Portland, OR | 971-517-7475 | U.S. Citizen | cjeong880@gmail.com | LinkedIn | Portfolio
+
+Education
+Brown University
+
+Sep. 2022 – May 2026
+
+Computer Science (BS), Mathematics (BS)
+Providence, RI
+• GPA: 3.96/4.0
+• Computer Science Coursework: Data Structures and Algorithms, Operating Systems (Graduate), Deep Learning,
+Computer Security, Computer Networks, Applied Cryptography, Compilers, Blockchains & Cryptocurrencies,
+Advanced Probabilistic Algorithms (Graduate), Design and Analysis of Algorithms, Object-Oriented Programming
+• Mathematics Coursework: Statistics I + II, Linear Algebra, Cryptography, Optimization, Galois Theory +
+Representation Theory, Abstract Algebra, Real Analysis I + II, Multivariable Calculus, Discrete Math
+
+Experience
+Undergraduate Research Assistant
+
+Jan. 2025 –
+
+Brown University Department of Computer Science
+Providence, RI
+• Evaluating the theory and application of anonymous credentials, digital cash, and fully homomorphic encryption
+with the Brown University Theoretical Computer Science group, constructing novel extensions upon message
+authentication codes and keyed-verifcation credentials.
+• Engineering implementations of the µBBS and µCM Z protocols in Rust for presentation at the Theory of Cryptography
+conference.
+• Constructed a Zero-Knowledge Proof crate in Rust allowing for non-interactive zero-knowledge proofs of classical discrete
+logarithms as well as representations of discrete logarithms with respect to the Curve25519 group.
+
+Software Engineer Intern
+
+Jun. 2024 – Aug. 2024
+
+JPMorgan Chase & Co.
+Wilmington, DE
+• Developed an internal React/Java/Spring Boot project management tool built on AWS tracking status of teams in all
+lines of business as well as agility metrics and internal mobility opportunities for 1,100 teams and 35,000 employees.
+• Engineered and maintained RESTful APIs in order to better coordinate API calls between in-house microservices within a
+Java environment. Reworked API calls to coordinate with the team’s shift from Angular and a private cloud environment
+to React and AWS, ensuring consistency in the back-end during the transition of front-end frameworks.
+• Created a Kafka data pipeline aggregating data from Jira to derive story progress that provides employees with real-time
+analyses of Jira story progress utilizing an in-house Small-Language Model.
+• Architected a robust testing framework consisting of unit tests, component tests, and performance tests from the ground up
+using JUnit and Jest, increasing code coverage to 80%.
+
+Undergraduate Teaching Assistant
+
+Jun. 2024 –
+
+Brown University
+Providence, RI
+• Selected as an undergraduate teaching assistant for Brown University’s courses in Operating Systems with Lab, Applied
+Cryptography, Abstract Algebra, and Cybersecurity Ethics.
+• Debugged and stress tested multithreaded C/x86 64 programs with 10,000+ lines of code, ensuring a seamless fit between
+file system, virtual memory, threads, and processes, and ensured that the operating system could handle high-stress situations
+such as forkbomb attacks and full consumption of disk space.
+• Implemented a threads package supporting multiprocessor programming, redesigning synchronization primitives such as
+mutexes and spinlocks as well as building a CPU scheduler.
+• Constructed a project introducing students to zero-knowledge proofs through anonymous voting in C++, ensuring proofs of
+correctness in the assigned protocol and constructing a networking package for ease of use.
+
+Projects
+TCP/IP Stack | Go, Networking, Wireshark
+Sep 2024 - Dec 2024
+• Designed and implemented a TCP/IP stack in Go that supports routing with the RIP protocol as well as TCP Packet
+reordering. Developed an API for hosts and routers to send messages and print network status.
+Multiple Candidate Voting Protocol | C++, CryptoPP, Cryptography, SQL
+Apr 2024 – May 2024
+• Formulated a heavily mathematical protocol in C++ that allows voters to anonymously vote for candidates using
+zero-knowledge proofs, ensuring votes and user information remain secure during network communication.
+Weenix | C, x86 64, Unix, Python
+Jan 2024 – Apr 2024
+• Engineered a Unix-based operating system kernel from scratch that can run C programs. Implemented processes, threads,
+mutexes, virtual memory, physical memory, page tables, system calls and disk management.
+
+Technical Skills
+Languages: Java, Python, C/C++, C#, SQL, MySQL, Go, JavaScript, TypeScript, HTML/CSS, OCaml, CUDA
+Technologies: React.js, Node.js, NestJS, Kafka, Spring Boot, DropWizard, Jenkins, Maven, AWS, Spark, Memcached, .NET
+Developer Tools: Git, Docker, VS Code, Postman, GitHub, BitBucket, Swagger, Redis, Zookeeper
+
+
