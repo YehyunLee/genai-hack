@@ -17,7 +17,13 @@ export default async function handler(req, res) {
 
   try {
     // Use system temp directory
-    const tempDir = os.tmpdir();
+    // const tempDir = os.tmpdir();
+    // Create temp directory if it doesn't exist
+    const tempDir = path.join(process.cwd(), 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
 
     const form = formidable({
       uploadDir: tempDir,
