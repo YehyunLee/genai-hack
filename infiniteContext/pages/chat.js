@@ -586,40 +586,31 @@ const dataURLtoBlob = (dataURL) => {
           switch (chunk.type) {
             case 'chunk':
               aiMessage.chunks[chunk.data.chunkNumber] = chunk.data;
-              aiMessage.text = Object.values(aiMessage.chunks)
+              // Parse escaped JSON string properly
+              const responses = Object.values(aiMessage.chunks)
                 .sort((a, b) => a.chunkNumber - b.chunkNumber)
                 .map(c => {
                   if (c.error) {
                     return `### Part ${c.chunkNumber}/${c.totalChunks}\n\n⚠️ Error: ${c.error}`;
                   }
-                  return `### Part ${c.chunkNumber}/${c.totalChunks}\n\n${c.response}`;
+                  // Parse the response string to handle escaped characters
+                  const parsed = c.response.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                  return `### Part ${c.chunkNumber}/${c.totalChunks}\n\n${parsed}`;
                 })
                 .join('\n\n---\n\n');
+              
+              aiMessage.text = responses;
               aiMessage.status = 'streaming';
-
-              // Update local state
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = { ...aiMessage };
-                return newMessages;
-              });
               break;
 
-            case 'complete':
-              // Save final version to Firestore
-              if (user && chatId) {
-                const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
-                await setDoc(chatRef, {
-                  messages: [...messages, userMessage, aiMessage],
-                  updatedAt: new Date()
-                }, { merge: true });
-              }
-              break;
-
-            case 'error':
-              setError(chunk.data.message);
-              break;
+            // ...rest of the cases...
           }
+
+          setMessages(prev => {
+            const newMessages = [...prev];
+            newMessages[newMessages.length - 1] = { ...aiMessage };
+            return newMessages;
+          });
         } catch (e) {
           console.error('Error parsing chunk:', e);
         }
