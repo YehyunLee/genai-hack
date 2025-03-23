@@ -10,6 +10,7 @@ import { onSnapshot } from "firebase/firestore";
 import ReactMarkdown from 'react-markdown';
 import { LogOut } from "lucide-react";
 import { debounce } from 'lodash';
+import Landing from './components/landing';
 
 const CodeBlock = ({ children, className }) => {
   const codeRef = useRef(null);
@@ -711,6 +712,13 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
               )}
             </div>
           </div>
+
+          {/* if no messages, import Landings */}
+          {messages.length === 0 && (
+            <Landing>
+
+            </Landing>
+          )}
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto">
