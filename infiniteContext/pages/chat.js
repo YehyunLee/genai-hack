@@ -281,7 +281,15 @@ const handleFileUpload = async (e) => {
     return;
   }
 
+  // Add file size validation - 10MB limit for remote deployment
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  if (file.size > MAX_FILE_SIZE) {
+    setError(`File too large (${(file.size / (1024 * 1024)).toFixed(2)}MB). Please select a file under 10MB.`);
+    return;
+  }
+
   setIsUploading(true);
+  setError(null);
 
   try {
     if (file.type.startsWith("video/")) {
@@ -315,61 +323,98 @@ const handleFileUpload = async (e) => {
         console.log('Video processed successfully');
       } catch (error) {
         console.error('Error processing video:', error);
-        alert('Error processing video: ' + error.message);
+        setError('Error processing video: ' + error.message);
       }
     } else {
       // Handle non-video files with your existing code
       const formData = new FormData();
       formData.append('file', file);
       
-      const res = await fetch('/api/uploadFile', {
-        method: 'POST',
-        body: formData,
-      });
+      // Add a timeout to the fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      try {
+        const res = await fetch('/api/uploadFile', {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) {
+          // Handle HTTP errors properly
+          const errorText = await res.text();
+          try {
+            // Try to parse as JSON first
+            const errorJson = JSON.parse(errorText);
+            throw new Error(errorJson.error || `Server error: ${res.status}`);
+          } catch (jsonError) {
+            // If not JSON, use the text directly or a fallback
+            throw new Error(
+              errorText.substring(0, 100) || 
+              `Server error (${res.status}). The file might be too large for the server to process.`
+            );
+          }
+        }
+        
+        // Safely parse JSON
+        let data;
+        try {
+          const text = await res.text();
+          data = JSON.parse(text);
+        } catch (error) {
+          throw new Error(`Failed to parse server response: ${error.message}`);
+        }
 
-      const data = await res.json();
+        if (data.success) {
+          // Case for PDF files
+          if(data.text) {
+            const pdfData = {
+              id: Date.now(),
+              content: data.text,
+              wordCount: data.text.trim().split(/\s+/).length,
+              fileInfo: {
+                fileName: data.info.fileName,
+                fileSize: data.info.fileSize,
+                pageCount: data.info.pageCount
+              },
+              timestamp: Date.now()
+            };
 
-      if (data.success) {
-        // Case for PDF files
-        if(data.text) {
-          const pdfData = {
-            id: Date.now(),
-            content: data.text,
-            wordCount: data.text.trim().split(/\s+/).length,
-            fileInfo: {
+            setPdfText(prev => ({
+              ...prev,
+              [pdfData.id]: pdfData
+            }));
+            setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
+          }
+          // Case for Image files
+          else if (data.data) {
+            const image = {
+              id: Date.now(),
+              inlineData: {
+                data: data.data,
+                mimeType: data.info?.mimeType || 'image/png'
+              },
               fileName: data.info.fileName,
-              fileSize: data.info.fileSize,
-              pageCount: data.info.pageCount
-            },
-            timestamp: Date.now()
-          };
+            };
 
-          setPdfText(prev => ({
-            ...prev,
-            [pdfData.id]: pdfData
-          }));
-          setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
+            setImage(prev => ({
+              ...prev,
+              [image.id]: image
+            }));
+
+            setSourceOrder(prev => [...prev, `image-${image.id}`]);
+          }
+        } else {
+          throw new Error(data.error || 'Unknown error occurred');
         }
-        // Case for Image files
-        else if (data.data) {
-          const image = {
-            id: Date.now(),
-            inlineData: {
-              data: data.data,
-              mimeType: data.info?.mimeType || 'image/png'
-            },
-            fileName: data.info.fileName,
-          };
-
-          setImage(prev => ({
-            ...prev,
-            [image.id]: image
-          }));
-
-          setSourceOrder(prev => [...prev, `image-${image.id}`]);
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out. Please try with a smaller file or check your connection.');
         }
-      } else {
-        alert('Failed to upload file: ' + data.error);
+        throw error;
       }
     }
     
@@ -380,7 +425,7 @@ const handleFileUpload = async (e) => {
     
   } catch (error) {
     console.error('Error in file upload:', error);
-    alert('Error uploading file: ' + error.message);
+    setError('Error uploading file: ' + error.message);
   } finally {
     setIsUploading(false);
   }
@@ -1036,6 +1081,11 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                     Press Enter to send, Shift + Enter for new line
                   </span>
                 </div>
+                {error && (
+                  <div className="mt-2 px-4 py-2 bg-red-500/20 border border-red-500/50 rounded-md">
+                    <p className="text-red-400 text-sm">{error}</p>
+                  </div>
+                )}
               </div>
               {error && (
                 <div className="max-w-3xl mx-auto px-4 py-2 mt-2">
