@@ -857,6 +857,37 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
   );
 };
 
+const handleExport = async () => {
+  try {
+    // Filter only AI messages
+    const aiMessages = messages.filter(msg => msg.role === 'ai' && !msg.text.startsWith('Processing'));
+    
+    const response = await fetch('/api/exportPdf', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messages: aiMessages }),
+    });
+
+    if (!response.ok) throw new Error('Failed to generate PDF');
+
+    // Convert the response to a blob and create a download link
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'textbook.pdf';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error('Export error:', error);
+    setError('Failed to export PDF: ' + error.message);
+  }
+};
+
   return (
     <div className="min-h-screen bg-gray-900">
       <Head>
@@ -899,7 +930,19 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                 {user ? chatTitle : "Infinite Context"}
               </h1>
             </div>
-            <div className="ml-auto z-10">
+            <div className="ml-auto z-10 flex items-center gap-2">
+              {messages.length > 0 && (
+                <button
+                  onClick={handleExport}
+                  className="text-blue-300 hover:text-blue-400 px-2 md:px-4 py-2 rounded flex items-center gap-2"
+                  title="Export to PDF"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span className="hidden md:inline">Export</span>
+                </button>
+              )}
               {user ? (
                 <button
                   onClick={() => {
