@@ -10,7 +10,7 @@ import { onSnapshot } from "firebase/firestore";
 import ReactMarkdown from 'react-markdown';
 import { LogOut } from "lucide-react";
 import { debounce } from 'lodash';
-import Landing from './components/landing';
+import MediaTypeIndicators from './components/mediaTypeIndicators';
 
 const CodeBlock = ({ children, className }) => {
   const codeRef = useRef(null);
@@ -714,57 +714,57 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
           </div>
 
           {/* if no messages, import Landings */}
-          {messages.length === 0 && (
-            <Landing>
-
-            </Landing>
-          )}
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`p-8 ${
-                msg.role === 'ai' ? 'bg-gray-800' : 
-                msg.role === 'system' ? 'bg-gray-700' : 'bg-gray-900'
-              }`}>
-                <div className="max-w-3xl mx-auto flex space-x-4">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    msg.role === 'ai' ? 'bg-green-500' : 
-                    msg.role === 'system' ? 'bg-gray-500' : 'bg-blue-500'
-                  }`}>
-                    {msg.role === 'ai' ? 'AI' : msg.role === 'system' ? 'S' : 'U'}
-                  </div>
-                  <div className="flex-1">
-                    {msg.sourceOrder && (
-                      <MessageAttachmentIndicator
-                        sourceOrder={msg.sourceOrder}
-                        infiniteMode={msg.infiniteMode}
-                      />
-                    )}
-                    <div className="prose prose-invert max-w-none">
-                      {msg.text && msg.text.startsWith('Processing') ? (
-                        <LoadingMessage infiniteMode={msg.infiniteMode} />
-                      ) : (
-                        <ReactMarkdown
-                          components={{
-                            code: ({ node, inline, className, children, ...props }) => {
-                              if (inline) {
-                                return <code className="bg-gray-700 rounded px-1 py-0.5" {...props}>{children}</code>;
-                              }
-                              return <CodeBlock className={className}>{children}</CodeBlock>;
-                            }
-                          }}
-                        >
-                          {msg.text || ''}
-                        </ReactMarkdown>
+          {messages.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center">
+              <MediaTypeIndicators />
+            </div>
+          ) : (
+            // Messages
+            <div className="flex-1 overflow-y-auto">
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`p-8 ${
+                  msg.role === 'ai' ? 'bg-gray-800' : 
+                  msg.role === 'system' ? 'bg-gray-700' : 'bg-gray-900'
+                }`}>
+                  <div className="max-w-3xl mx-auto flex space-x-4">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      msg.role === 'ai' ? 'bg-green-500' : 
+                      msg.role === 'system' ? 'bg-gray-500' : 'bg-blue-500'
+                    }`}>
+                      {msg.role === 'ai' ? 'AI' : msg.role === 'system' ? 'S' : 'U'}
+                    </div>
+                    <div className="flex-1">
+                      {msg.sourceOrder && (
+                        <MessageAttachmentIndicator
+                          sourceOrder={msg.sourceOrder}
+                          infiniteMode={msg.infiniteMode}
+                        />
                       )}
+                      <div className="prose prose-invert max-w-none">
+                        {msg.text && msg.text.startsWith('Processing') ? (
+                          <LoadingMessage infiniteMode={msg.infiniteMode} />
+                        ) : (
+                          <ReactMarkdown
+                            components={{
+                              code: ({ node, inline, className, children, ...props }) => {
+                                if (inline) {
+                                  return <code className="bg-gray-700 rounded px-1 py-0.5" {...props}>{children}</code>;
+                                }
+                                return <CodeBlock className={className}>{children}</CodeBlock>;
+                              }
+                            }}
+                          >
+                            {msg.text || ''}
+                          </ReactMarkdown>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
 
           {/* Input area */}
           <div className="border-t border-gray-800 p-4">
