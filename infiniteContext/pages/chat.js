@@ -93,6 +93,11 @@ export default function Chat() {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
   };
 
+  const resetTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    textarea.style.height = 'auto';
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -279,6 +284,7 @@ export default function Chat() {
     // Update local state with both messages
     setMessages(prev => [...prev, userMessage, initialAiMessage]);
     setInput('');
+    resetTextareaHeight();
 
     const combinedText = sourceOrder
       .filter(sourceId => !sourceId.startsWith('image'))
@@ -303,7 +309,7 @@ export default function Chat() {
       fullText: combinedText || null,
       images: imagePayloads.length > 0 ? imagePayloads : null,
     };
-    
+
     let tempChatId = chatId;
     if (user && !tempChatId) {
       const chatData = {
