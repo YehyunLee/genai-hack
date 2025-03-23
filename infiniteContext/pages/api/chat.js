@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb' // Increase this value based on your needs
+      sizeLimit: '50mb' // Increase this value based on your needs
     },
     responseLimit: false
   }
@@ -24,12 +24,12 @@ const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
 const systemPromptForEachChunk = "Initial user's message was too long to process in a single request. The message has been divided into smaller chunks and processed individually. You are in chunk #{{chunk_number}} / {{total_chunks}}. You can assume other chunks are similar to this one. You do not need to do an introduction or greeting in this chunk. Just start answer directly from the context of this chunk. You will be given 1) what the user has asked to do in the beginning of the chunk, and 2) the chunk of text. Here is the user's request: {{user_request}}. Here is the chunk of text: {{chunk_text}}. Please continue the conversation from this context. Note you can use markdown to format your response. Latext is not supported, so don't use $$. Use ```...`` to create a block, for math, code or to highlight important parts of your response.";
 
 const modelResponse = (model, message, images, imageType) => {
-    switch (model) {
-        case 'gemini':
-            return geminiResponse(message, images, imageType);
-        default:
-            return geminiResponse(message, images, imageType);
-    }
+  switch (model) {
+    case 'gemini':
+      return geminiResponse(message, images, imageType);
+    default:
+      return geminiResponse(message, images, imageType);
+  }
 }
 
 const geminiResponse = async (message, imageChunk, imageChunkType) => {
@@ -57,8 +57,8 @@ const geminiResponse = async (message, imageChunk, imageChunkType) => {
 }
 
 const cohereResponse = async (message) => {
-    const response = "...";
-    return response;
+  const response = "...";
+  return response;
 }
 
 // Process text by token count (rough estimate)
@@ -132,7 +132,7 @@ const processLongContent = async (text, userRequest, images, video, chunkSize = 
     });
     
   }
-  
+
   return chunks;
 };
 
@@ -147,68 +147,91 @@ const processChunks = async (chunks, res) => {
     try {
       // In processChunks function, update this line:
       const response = await modelResponse('gemini', chunk.prompt, chunk.chunkData, chunk.chunkDataType);
+      
+      // Escape any characters that could break JSON
+      const safeResponse = response.replace(/\\/g, '\\\\')
+                                  .replace(/"/g, '\\"')
+                                  .replace(/\n/g, '\\n')
+                                  .replace(/\r/g, '\\r')
+                                  .replace(/\t/g, '\\t')
+                                  .replace(/\f/g, '\\f');
+
       const chunkResult = {
-        ...chunk,
-        response,
+        chunkNumber: chunk.chunkNumber,
+        totalChunks: chunk.totalChunks,
+        response: safeResponse,
         error: null,
         status: 'complete'
       };
 
-      // Stream result immediately
-      const data = encoder.encode(JSON.stringify({
+      // Ensure valid JSON by stringifying the entire chunk object
+      const chunkData = JSON.stringify({
         type: 'chunk',
         data: chunkResult
-      }) + '\n');
+      }) + '\n';
       
-      res.write(data);
-      await res.flush();
+      res.write(encoder.encode(chunkData));
+      await res.flush?.();
       
       return chunkResult;
     } catch (error) {
       errorCount++;
       console.error(`Error processing chunk ${chunk.chunkNumber}:`, error);
       
+      const errorData = JSON.stringify({
+        type: 'chunk',
+        data: {
+          chunkNumber: chunk.chunkNumber,
+          totalChunks: chunk.totalChunks,
+          response: '',
+          error: error.message.replace(/"/g, '\\"'),
+          status: 'error'
+        }
+      }) + '\n';
+      
+      res.write(encoder.encode(errorData));
+      await res.flush?.();
+
       // Only throw if it's a rate limit error
-      if (error.message.toLowerCase().includes('429') || 
+      if (error.message.toLowerCase().includes('429') ||
           error.message.toLowerCase().includes('too many requests')) {
         throw error;
       }
       
-      return {
-        ...chunk,
-        response: `Error processing chunk ${chunk.chunkNumber}: ${error.message}`,
-        error: error.message,
-        status: 'error'
-      };
+      return null;
     }
   });
 
   try {
     const results = await Promise.allSettled(chunkPromises);
     
-    // Send final status
-    res.write(encoder.encode(JSON.stringify({
+    // Send final status with proper JSON encoding
+    const completeData = JSON.stringify({
       type: 'complete',
       data: {
         totalProcessed: results.length,
         errorCount
       }
-    }) + '\n'));
+    }) + '\n';
+    
+    res.write(encoder.encode(completeData));
     
     return {
-      results: results.map(r => r.status === 'fulfilled' ? r.value : r.reason),
+      results: results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean),
       errorCount,
       totalCount: chunks.length
     };
   } catch (error) {
-    // If we hit rate limits, return what we have so far
-    res.write(encoder.encode(JSON.stringify({
+    // Send error with proper JSON encoding
+    const errorData = JSON.stringify({
       type: 'error',
       data: {
         message: 'Rate limit reached',
-        error: error.message
+        error: error.message.replace(/"/g, '\\"')
       }
-    }) + '\n'));
+    }) + '\n';
+    
+    res.write(encoder.encode(errorData));
     throw error;
   }
 };
@@ -230,12 +253,11 @@ export default async function handler(req, res) {
       const chunks = await processLongContent(fullText, message, images, video);
       
       await processChunks(chunks, res);
-      
+
       res.end();
       
     } else {
-      // Regular chat mode
-      const response = await modelResponse('gemini', message);
+      const response = await modelResponse('gemini', message, images);
       return res.status(200).json({
         response,
         mode: 'default'
@@ -243,9 +265,9 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('API Error:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Internal server error',
-      details: error.message 
+      details: error.message
     });
   }
 }
