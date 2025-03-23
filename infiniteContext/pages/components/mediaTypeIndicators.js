@@ -1,6 +1,6 @@
 const MediaTypeIndicators = () => (
   <div className="flex flex-col items-center justify-center py-8">
-    <div className="text-gray-400 text-lg mb-6 text-center px-4 md:px-0">
+    <div className="text-gray-400 text-lg mb-10 text-center px-4 md:px-0">
       Upload PDF, Image, or paste text to start the conversation with infinite context
     </div>
     <div className="flex flex-col md:flex-row justify-center gap-8">
