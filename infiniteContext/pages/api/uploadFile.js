@@ -1,7 +1,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
-import pdfParse from 'pdf-parse';
+import { processFile } from './_fileProcessors';
 import os from 'os';
 
 export const config = {
@@ -12,7 +12,7 @@ export const config = {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({error: 'Method not allowed'});
   }
 
   try {
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     const form = formidable({
       uploadDir: tempDir,
       keepExtensions: true,
-      maxFileSize: 10 * 1024 * 1024, // 10MB limit
+      maxFileSize: 50 * 1024 * 1024, // 50MB limit
     });
 
     // Parse the form
@@ -35,33 +35,21 @@ export default async function handler(req, res) {
 
     // In newer versions of formidable, the file might be in an array
     const file = files.file?.[0] || files.file;
-    
+
     if (!file || !file.filepath) {
-      return res.status(400).json({ error: 'No valid file uploaded' });
+      return res.status(400).json({error: 'No valid file uploaded'});
     }
 
-    try {
-      // Read the PDF file
-      const dataBuffer = fs.readFileSync(file.filepath);
-      
-      // Extract text from PDF
-      const pdfData = await pdfParse(dataBuffer);
-      const extractedText = pdfData.text;
-      
-      // Get additional PDF info
-      const pdfInfo = {
-        pageCount: pdfData.numpages,
-        fileName: file.originalFilename || 'uploaded-file.pdf',
-        fileSize: (file.size / 1024).toFixed(2) + ' KB'
-      };
+    // Get file type and extension
+    const fileType = file.mimetype || 'application/octet-stream';
+    const fileExtension = path.extname(file.originalFilename || '').slice(1).toLowerCase();
 
-      // Send response
-      res.status(200).json({
-        success: true,
-        text: extractedText,
-        info: pdfInfo
-      });
-    } finally {
+    // Process the file based on its type
+    try {
+    const result = await processFile(file, fileType, fileExtension);
+
+    res.status(200).json(result);
+  } finally {
       // Always clean up the temp file
       if (file.filepath && fs.existsSync(file.filepath)) {
         fs.unlinkSync(file.filepath);
