@@ -101,7 +101,7 @@ const Sidebar = ({ userId, onNewChat, chatId, setChatId, isSidebarOpen, setIsSid
 
       <div className={`fixed inset-0 z-50 bg-gray-900 bg-opacity-75 transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
 
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-800 p-4 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 max-h-screen overflow-y-scroll`}>
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-800 p-4 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
         <button
           onClick={onNewChat}
           className="flex items-center justify-center gap-2 px-4 py-2 mb-4 w-full rounded-xl border border-white/20 text-white hover:bg-gray-700 transition-colors"
