@@ -372,6 +372,24 @@ const dataURLtoBlob = (dataURL) => {
         body: JSON.stringify(payload),
       });
 
+
+        
+      let tempChatId = chatId;
+      if (user && !tempChatId) {
+        const chatData = {
+          title: userMessage.text,
+          createdAt: new Date(),
+          messages: [],
+        };
+
+        const chatDocRef = await addDoc(collection(db, `users/${user.uid}/chats`), chatData);
+        setChatId(chatDocRef.id);
+        setChatTitle(userMessage.text);
+        tempChatId = chatDocRef.id;
+      }
+
+
+
       if (!infiniteMode || sourceOrder.length === 0) {
         // Handle normal mode response
         const data = await res.json();
@@ -385,6 +403,7 @@ const dataURLtoBlob = (dataURL) => {
         // Update both local state and Firestore
         const updatedMessages = [...messages, userMessage, aiMessage];
         setMessages(updatedMessages);
+
         if (user && tempChatId) {
           const chatRef = doc(db, `users/${user.uid}/chats/${tempChatId}`);
           await setDoc(chatRef, {
