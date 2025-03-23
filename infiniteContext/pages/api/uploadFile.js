@@ -11,6 +11,8 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  let filePath = null;
+  
   if (req.method !== 'POST') {
     return res.status(405).json({error: 'Method not allowed'});
   }
@@ -24,7 +26,6 @@ export default async function handler(req, res) {
     //   fs.mkdirSync(tempDir, { recursive: true });
     // }
     
-
     const form = formidable({
       uploadDir: tempDir,
       keepExtensions: true,
@@ -46,23 +47,39 @@ export default async function handler(req, res) {
       return res.status(400).json({error: 'No valid file uploaded'});
     }
 
+    filePath = file.filepath; // Store the file path for cleanup
+
     // Get file type and extension
     const fileType = file.mimetype || 'application/octet-stream';
     const fileExtension = path.extname(file.originalFilename || '').slice(1).toLowerCase();
 
     // Process the file based on its type
-    try {
     const result = await processFile(file, fileType, fileExtension);
-
+    
     res.status(200).json(result);
+  } catch (error) {
+    console.error('File processing error:', error);
+    
+    // Send more user-friendly error messages
+    if (error.message.includes('maxFileSize')) {
+      return res.status(413).json({ error: 'File too large. Maximum size is 50MB.' });
+    } else if (error.message.includes('too large to process')) {
+      return res.status(413).json({ error: error.message });
+    } else if (error.message.includes('password protected')) {
+      return res.status(422).json({ error: error.message });
+    } else if (error.message.includes('corrupted')) {
+      return res.status(422).json({ error: error.message });
+    }
+    
+    return res.status(500).json({ error: 'An error occurred while processing the file.' });
   } finally {
-      // Always clean up the temp file
-      if (file.filepath && fs.existsSync(file.filepath)) {
-        fs.unlinkSync(file.filepath);
+    // Always clean up the temp file
+    if (filePath && fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (err) {
+        console.error('Error deleting temporary file:', err);
       }
     }
-  } catch (error) {
-    console.error('PDF processing error:', error);
-    return res.status(500).json({ error: error.message });
   }
 }
