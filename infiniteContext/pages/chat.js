@@ -28,7 +28,7 @@ export default function Chat() {
   const [processingChunks, setProcessingChunks] = useState({});
   const [visibleMessages, setVisibleMessages] = useState({});
   const [user, setUser] = useState(null);
-  const [testShots, setTestShots] = useState(null)
+  
 
 
 
@@ -93,14 +93,11 @@ const handleFileUpload = async (e) => {
 
   try {
     if (file.type.startsWith("video/")) {
-      // Process video files using the inline processVideo function
       try {
         console.log('Processing video file...');
         
-        // Call the processVideo function to get screenshots
         const screenshots = await extractScreenshots(file);
         console.log('Video processing complete, screenshots:', screenshots);
-        setTestShots(screenshots);
         
         // Create a video entry with screenshots
         const video = {
