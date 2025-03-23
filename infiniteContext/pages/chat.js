@@ -122,12 +122,21 @@ export default function Chat() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file) {
-      alert('Please select a valid file');
+    if (!file) return;
+
+    // Validate file type and size
+    if (!file.type.includes('pdf') && !file.type.includes('image')) {
+      setError('Please upload a PDF or image file');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      setError('File size must be less than 50MB');
       return;
     }
 
     setIsUploading(true);
+    setError(null);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -139,78 +148,44 @@ export default function Chat() {
       });
 
       const data = await res.json();
-
-      if (data.success) {
-        // Case for PDF files
-        if(data.text) {
-          const pdfData = {
-            id: Date.now(),
-            content: data.text,
-            wordCount: data.text.trim().split(/\s+/).length,
-            fileInfo: {
-              fileName: data.info.fileName,
-              fileSize: data.info.fileSize,
-              pageCount: data.info.pageCount
-            },
-            timestamp: Date.now()
-          };
-
-          setPdfText(prev => ({
-            ...prev,
-            [pdfData.id]: pdfData
-          }));
-          setSourceOrder(prev => [...prev, `pdf-${pdfData.id}`]);
-        }
-        // Case for Image files
-        else if (data.data) {
-          const image = {
-            id: Date.now(),
-            inlineData: {
-              data: data.data,
-              mimeType: data.info?.mimeType || 'image/png'
-            },
-            fileName: data.info.fileName,
-          };
-
-          setImage(prev => ({
-            ...prev,
-            [image.id]: image
-          }));
-
-          setSourceOrder(prev => [...prev, `image-${image.id}`]);
-        }
-
-        // Comment out the system messages
-        /* setMessages(prev => [
-          ...prev,
-
-        setPdfText(data.text);
-        setPdfInfo(data.info);
-
-        setUploadedFile({
-          name: data.info.fileName,
-          size: data.info.fileSize,
-          pageCount: data.info.pageCount
-        });
-
-        setMessages(prev => [
-          ...prev,
-
-          {
-            role: 'system',
-            text: `File uploaded: ${data.info.fileName} (${data.info.fileSize}, ${data.info.pageCount} pages)`
-          },
-          {
-            role: 'system',
-            text: `Text extracted from PDF:\n\n${data.text}`
-          }
-        ]); */
-        adjustTextareaHeight();
-      } else {
-        alert('Failed to upload file: ' + data.error);
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to upload file');
       }
+
+      const newData = {
+        id: Date.now(),
+        timestamp: Date.now()
+      };
+
+      if (data.text) {
+        // Handle PDF
+        newData.content = data.text;
+        newData.wordCount = data.text.trim().split(/\s+/).length;
+        newData.fileInfo = data.info;
+        setPdfText(prev => ({
+          ...prev,
+          [newData.id]: newData
+        }));
+        setSourceOrder(prev => [...prev, `pdf-${newData.id}`]);
+      } else if (data.data) {
+        // Handle image
+        newData.inlineData = {
+          data: data.data,
+          mimeType: data.info.mimeType
+        };
+        newData.fileName = data.info.fileName;
+        setImage(prev => ({
+          ...prev,
+          [newData.id]: newData
+        }));
+        setSourceOrder(prev => [...prev, `image-${newData.id}`]);
+      }
+
+      setError(null);
     } catch (error) {
-      alert('Error uploading file: ' + error.message);
+      console.error('Upload error:', error);
+      setError(error.message || 'Error uploading file');
     } finally {
       setIsUploading(false);
     }
@@ -536,7 +511,7 @@ export default function Chat() {
                 ) : (
                   <>
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                     <span className="text-sm text-white">Clipboard Text</span>
                   </>
@@ -629,7 +604,7 @@ const MessageAttachmentIndicator = ({ sourceOrder, infiniteMode }) => {
                   <>
                     <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                     <span>Clipboard Text</span>
                   </>

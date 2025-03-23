@@ -12,51 +12,71 @@ export const config = {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({error: 'Method not allowed'});
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Use system temp directory
     const tempDir = os.tmpdir();
-
     const form = formidable({
       uploadDir: tempDir,
       keepExtensions: true,
-      maxFileSize: 50 * 1024 * 1024, // 50MB limit
+      maxFileSize: 50 * 1024 * 1024,
+      filter: function ({ mimetype }) {
+        return mimetype && (mimetype.includes('pdf') || mimetype.includes('image'));
+      },
     });
 
-    // Parse the form
+    // Parse the form with error handling
     const [fields, files] = await new Promise((resolve, reject) => {
-      form.parse(req, (err, fields, files) => {
-        if (err) return reject(err);
-        resolve([fields, files]);
-      });
+      try {
+        form.parse(req, (err, fields, files) => {
+          if (err) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+              reject(new Error('File is too large (max 50MB)'));
+            } else {
+              reject(err);
+            }
+            return;
+          }
+          resolve([fields, files]);
+        });
+      } catch (err) {
+        reject(new Error('Error parsing form data'));
+      }
     });
 
-    // In newer versions of formidable, the file might be in an array
     const file = files.file?.[0] || files.file;
-
+    
     if (!file || !file.filepath) {
-      return res.status(400).json({error: 'No valid file uploaded'});
+      throw new Error('No valid file uploaded');
     }
 
-    // Get file type and extension
-    const fileType = file.mimetype || 'application/octet-stream';
-    const fileExtension = path.extname(file.originalFilename || '').slice(1).toLowerCase();
-
-    // Process the file based on its type
     try {
-    const result = await processFile(file, fileType, fileExtension);
+      const dataBuffer = fs.readFileSync(file.filepath);
+      if (!dataBuffer || dataBuffer.length === 0) {
+        throw new Error('Empty or invalid file');
+      }
 
-    res.status(200).json(result);
-  } finally {
-      // Always clean up the temp file
+      // Process file based on type
+      const result = await processFile(file, dataBuffer);
+      
+      // Clean up temp file immediately after processing
+      fs.unlinkSync(file.filepath);
+      
+      return res.status(200).json(result);
+    } catch (processError) {
+      // Clean up temp file in case of processing error
       if (file.filepath && fs.existsSync(file.filepath)) {
         fs.unlinkSync(file.filepath);
       }
+      throw processError;
     }
   } catch (error) {
-    console.error('PDF processing error:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Upload error:', error);
+    // Ensure error response is properly formatted
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
   }
 }
