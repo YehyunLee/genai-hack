@@ -6,13 +6,13 @@ A Next.js application that helps you manage and interact with large contexts for
 
 ## Description
 
-Infinite Context is designed to overcome token limitations in AI interactions by intelligently managing context windows. This project allows for seamless handling of large documents and conversation histories.
+Infinite Context is designed to overcome token limitations in AI interactions by intelligently managing context windows, using parallel processing. This project allows for seamless handling of large documents and conversation histories, able to handle dumping entire Textbooks, Datasets, and Codebases, ALL AT ONCE!
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/infiniteContext.git
+git clone https://github.com/TaseskiCS/Infinite-Context.git
 
 # Navigate to the project directory
 cd infiniteContext
@@ -42,7 +42,7 @@ Visit [http://localhost:3000](http://localhost:3000) to see the application runn
 - Document chunking and indexing
 - Conversation history management
 - Responsive UI built with Next.js
-- API integration for various AI models
+- API integration for handling various AI models (gemini, cohere, openai, etc..)
 
 ## Benefits & Advantages
 
@@ -72,7 +72,8 @@ Visit [http://localhost:3000](http://localhost:3000) to see the application runn
 - React
 - TypeScript
 - Node.js
-- [Other libraries/frameworks used in your project]
+- Firebase
+- Google Cloud
 
 ## Contributing
 
